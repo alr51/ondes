@@ -98,11 +98,12 @@ Principes :
 - **Livrable** : bibliothèque musicale utilisable au quotidien.
 
 ### Phase 4 — Intégration système
-- [ ] Touches média, MPRIS/SMTC (`souvlaki`)
-- [ ] Notifications au changement de morceau
-- [ ] Raccourcis clavier (actions GPUI) et palette de commandes
-- [ ] Icône dans la zone de notification (optionnel)
-- [ ] Persistance de l'état (dernière station, volume, fenêtre)
+- [x] Touches multimédia et panneau média du bureau : MPRIS via `souvlaki` (zbus, sans libdbus) — lecture, pause, suivant, précédent, position, volume, titre, pochette
+- [x] Notifications au changement de morceau / de titre radio, quand la fenêtre est en arrière-plan (désactivables)
+- [x] Raccourcis clavier (actions GPUI, sans conflit avec la saisie) et palette de commandes (Ctrl+K)
+- [x] Persistance (`state.toml`) : volume, dernière source (proposée à la reprise), page, thème, fenêtre, aléatoire, répétition
+- [ ] Icône dans la zone de notification — reportée : GNOME n'en affiche pas sans extension, et MPRIS couvre l'essentiel
+- [x] Raccourcis, palette, notifications, touches multimédia — validés à la main
 
 ### Phase 5 — Finitions et distribution
 - [ ] Gestion d'erreurs propre (flux morts, codecs non pris en charge)
@@ -110,6 +111,7 @@ Principes :
 - [ ] Mise à jour automatique (optionnel), page « À propos », licences
 
 ### Backlog
+- Icône dans la zone de notification (`tray-icon`) pour les bureaux qui en ont une
 - Titres ICY des flux Radio France (pas d'ICY : API dédiée à étudier)
 - Flux HLS (m3u8)
 - Égaliseur, ReplayGain, fondu enchaîné

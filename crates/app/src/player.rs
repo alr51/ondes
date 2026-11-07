@@ -8,9 +8,11 @@ use ondes_audio::{AudioEngine, Command, Event, PlaybackState, SourceSpec, TrackI
 use ondes_library::Track;
 use ondes_radio::Station;
 
+use crate::library::LibraryModel;
 use crate::queue::{Queue, Repeat};
 use crate::radio::Directory;
 use crate::runtime::Rt;
+use crate::settings::LastSource;
 
 pub struct Player {
     engine: Option<AudioEngine>,
@@ -27,6 +29,8 @@ pub struct Player {
     pub reconnecting: Option<u32>,
     /// File d'attente des morceaux de la bibliothèque.
     pub queue: Queue,
+    /// Source du lancement précédent, relancée par « Lecture ».
+    pub resume: Option<LastSource>,
     volume: f32,
     _events: Task<()>,
 }
@@ -73,6 +77,7 @@ impl Player {
             error,
             reconnecting: None,
             queue: Queue::default(),
+            resume: None,
             volume,
             _events: events_task,
         }
@@ -132,6 +137,7 @@ impl Player {
     }
 
     fn start(&mut self, label: String, spec: SourceSpec, cx: &mut Context<Self>) {
+        self.resume = None;
         self.now_playing = None;
         self.pending = Some(label);
         self.track = None;
@@ -170,6 +176,72 @@ impl Player {
         }
     }
 
+    /// Déplacement relatif (millisecondes, négatif pour reculer).
+    pub fn seek_by(&mut self, delta_ms: i64, cx: &mut Context<Self>) {
+        let Some(duration) = self
+            .track
+            .as_ref()
+            .filter(|t| !t.live)
+            .and_then(|t| t.duration)
+        else {
+            return;
+        };
+        let target =
+            (self.position.as_millis() as i64 + delta_ms).clamp(0, duration.as_millis() as i64);
+        self.seek(Duration::from_millis(target as u64), cx);
+    }
+
+    pub fn change_volume(&mut self, delta: f32, cx: &mut Context<Self>) {
+        let v = (self.volume + delta).clamp(0., 1.);
+        self.set_volume(v, cx);
+    }
+
+    /// Source en cours, à mémoriser pour le prochain lancement.
+    pub fn last_source(&self) -> Option<LastSource> {
+        if let Some(t) = self.current_track() {
+            return Some(LastSource::Track {
+                path: t.path.clone(),
+            });
+        }
+        if let Some(station) = &self.station {
+            return Some(LastSource::Station {
+                station: Box::new(station.clone()),
+            });
+        }
+        match self.track.as_ref().map(|t| &t.spec) {
+            Some(SourceSpec::Url(url)) => Some(LastSource::Url { url: url.clone() }),
+            Some(SourceSpec::File(path)) => Some(LastSource::File { path: path.clone() }),
+            None => self.resume.clone(),
+        }
+    }
+
+    /// Relance la source du lancement précédent.
+    fn play_resume(&mut self, cx: &mut Context<Self>) {
+        let Some(last) = self.resume.take() else {
+            return;
+        };
+        match last {
+            LastSource::Station { station } => self.play_station(*station, cx),
+            LastSource::Url { url } => self.load(SourceSpec::Url(url), cx),
+            LastSource::File { path } => self.load(SourceSpec::File(path), cx),
+            LastSource::Track { path } => {
+                // Avec ses tags si le morceau est (encore) dans la bibliothèque.
+                let library = LibraryModel::global(cx);
+                let found = library
+                    .read(cx)
+                    .data
+                    .tracks
+                    .iter()
+                    .find(|t| t.path == path)
+                    .cloned();
+                match found {
+                    Some(track) => self.play_tracks(vec![track], 0, cx),
+                    None => self.load(SourceSpec::File(path), cx),
+                }
+            }
+        }
+    }
+
     pub fn seek(&mut self, pos: Duration, cx: &mut Context<Self>) {
         self.position = pos;
         self.send(Command::Seek(pos));
@@ -195,7 +267,11 @@ impl Player {
         self.queue.current()
     }
 
-    pub fn toggle_play(&mut self, _: &mut Context<Self>) {
+    pub fn toggle_play(&mut self, cx: &mut Context<Self>) {
+        if self.track.is_none() && self.pending.is_none() && self.resume.is_some() {
+            self.play_resume(cx);
+            return;
+        }
         self.send(Command::TogglePlay);
     }
 
@@ -220,6 +296,15 @@ impl Player {
             .or_else(|| self.station.as_ref().map(|s| s.name.clone()))
             .or_else(|| self.track.as_ref().map(|t| t.title.clone()))
             .or_else(|| self.pending.clone())
+            .or_else(|| {
+                self.resume.as_ref().map(|r| match r {
+                    LastSource::Station { station } => station.name.clone(),
+                    LastSource::Url { url } => SourceSpec::Url(url.clone()).label(),
+                    LastSource::File { path } | LastSource::Track { path } => {
+                        SourceSpec::File(path.clone()).label()
+                    }
+                })
+            })
     }
 
     /// La radio en cours, sous forme de station (pour l'ajouter aux favoris).
@@ -246,6 +331,7 @@ impl Player {
 
     /// Y a-t-il quelque chose à lire ou à arrêter ?
     pub fn has_source(&self) -> bool {
-        self.engine.is_some() && (self.track.is_some() || self.pending.is_some())
+        self.engine.is_some()
+            && (self.track.is_some() || self.pending.is_some() || self.resume.is_some())
     }
 }

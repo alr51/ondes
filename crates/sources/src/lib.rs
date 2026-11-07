@@ -34,8 +34,13 @@ impl SourceSpec {
         if input.starts_with("http://") || input.starts_with("https://") {
             return Some(Self::Url(input.to_string()));
         }
-        let path = input.strip_prefix("file://").unwrap_or(input);
-        Some(Self::File(PathBuf::from(path)))
+        let path = PathBuf::from(input.strip_prefix("file://").unwrap_or(input));
+        // Chemin absolu : la source reste valable quel que soit le dossier courant.
+        let path = match std::path::absolute(&path) {
+            Ok(abs) => abs,
+            Err(_) => path,
+        };
+        Some(Self::File(path))
     }
 
     /// Libellé provisoire, avant ouverture.
@@ -116,5 +121,11 @@ mod tests {
             Some(SourceSpec::File("/tmp/a.mp3".into()))
         );
         assert_eq!(SourceSpec::parse("   "), None);
+        assert_eq!(
+            SourceSpec::parse("musique/a.mp3"),
+            Some(SourceSpec::File(
+                std::env::current_dir().unwrap().join("musique/a.mp3")
+            ))
+        );
     }
 }

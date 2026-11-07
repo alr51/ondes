@@ -1,13 +1,17 @@
 //! Fenêtre principale : barre latérale, contenu, barre de lecture.
 
+use std::cell::Cell;
+use std::rc::Rc;
 use std::time::Duration;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::{
-    ActiveTheme, Sizable, StyledExt, Theme, ThemeMode,
+    ActiveTheme, Sizable, StyledExt, Theme, ThemeMode, WindowExt as _,
     button::{Button, ButtonVariants},
+    command::{Command, CommandGroup, CommandItem, CommandState},
     h_flex,
     input::{Input, InputEvent, InputState},
+    notification::Notification,
     sidebar::{Sidebar, SidebarFooter, SidebarGroup, SidebarHeader, SidebarMenu, SidebarMenuItem},
     v_flex,
 };
@@ -15,12 +19,18 @@ use gpui_kit::*;
 
 use ondes_audio::SourceSpec;
 
+use crate::actions::{self, *};
 use crate::library_view::{GroupKind, LibraryFolders, LibraryGroups, LibraryTracks};
 use crate::player::Player;
 use crate::player_bar::PlayerBar;
+use crate::queue::Repeat;
+use crate::radio::FavoritesModel;
 use crate::radio_explore::RadioExplore;
+use crate::radio_explore::toggle_favorite;
 use crate::radio_favorites::RadioFavorites;
 use crate::runtime::Rt;
+use crate::settings::{Settings, WindowState};
+use crate::system::System;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Page {
@@ -39,14 +49,30 @@ impl Page {
         if !cfg!(debug_assertions) {
             return None;
         }
-        Some(match std::env::var("ONDES_PAGE").ok()?.as_str() {
+        Some(Self::from_key(&std::env::var("ONDES_PAGE").ok()?))
+    }
+
+    /// Identifiant stable, enregistré dans l'état.
+    fn key(self) -> &'static str {
+        match self {
+            Page::RadioExplore => "explore",
+            Page::RadioFavorites => "favorites",
+            Page::LibraryTracks => "tracks",
+            Page::LibraryAlbums => "albums",
+            Page::LibraryArtists => "artists",
+            Page::LibraryFolders => "folders",
+        }
+    }
+
+    fn from_key(key: &str) -> Self {
+        match key {
             "favorites" => Page::RadioFavorites,
             "tracks" => Page::LibraryTracks,
             "albums" => Page::LibraryAlbums,
             "artists" => Page::LibraryArtists,
             "folders" => Page::LibraryFolders,
             _ => Page::RadioExplore,
-        })
+        }
     }
 
     fn title(self) -> &'static str {
@@ -94,12 +120,26 @@ pub struct Shell {
     folders: Entity<LibraryFolders>,
     /// Champ « URL ou chemin » de la barre d'ouverture rapide.
     location: Entity<InputState>,
+    palette: Entity<CommandState>,
+    _system: Entity<System>,
     _subscriptions: Vec<Subscription>,
 }
 
 impl Shell {
     pub fn new(initial: Option<SourceSpec>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        Theme::sync_system_appearance(Some(window), cx);
+        let saved = Settings::get(cx);
+        match saved.dark {
+            Some(dark) => Theme::change(
+                if dark {
+                    ThemeMode::Dark
+                } else {
+                    ThemeMode::Light
+                },
+                Some(window),
+                cx,
+            ),
+            None => Theme::sync_system_appearance(Some(window), cx),
+        }
         let appearance_sub = cx.observe_window_appearance(window, |this, window, cx| {
             if this.follow_system_theme {
                 Theme::sync_system_appearance(Some(window), cx);
@@ -116,7 +156,18 @@ impl Shell {
             }
         });
 
-        let player = cx.new(|cx| Player::new(0.8, cx));
+        let player = cx.new(|cx| {
+            let mut p = Player::new(saved.volume, cx);
+            p.queue.shuffle = saved.shuffle;
+            p.queue.repeat = match saved.repeat.as_str() {
+                "all" => Repeat::All,
+                "one" => Repeat::One,
+                _ => Repeat::Off,
+            };
+            // Proposée à la relecture (bouton Lecture), sans démarrer seule.
+            p.resume = saved.last.clone().filter(|_| initial.is_none());
+            p
+        });
         let player_bar = cx.new(|cx| PlayerBar::new(player.clone(), window, cx));
         let explore = cx.new(|cx| RadioExplore::new(player.clone(), window, cx));
         let favorites = cx.new(|cx| RadioFavorites::new(player.clone(), window, cx));
@@ -125,10 +176,55 @@ impl Shell {
         let artists =
             cx.new(|cx| LibraryGroups::new(GroupKind::Artists, player.clone(), window, cx));
         let folders = cx.new(LibraryFolders::new);
+        let palette = cx.new(|cx| CommandState::new(window, cx));
+        let system = cx.new(|cx| System::new(player.clone(), window, cx));
+
+        let subscriptions = vec![
+            appearance_sub,
+            enter_sub,
+            // Mémorise volume, dernière source, aléatoire et répétition.
+            cx.observe(&player, |_, player, cx| {
+                let p = player.read(cx);
+                let (volume, last, shuffle) = (p.volume(), p.last_source(), p.queue.shuffle);
+                let repeat = match p.repeat() {
+                    Repeat::Off => "off",
+                    Repeat::All => "all",
+                    Repeat::One => "one",
+                };
+                Settings::update(cx, |s| {
+                    s.volume = volume;
+                    if last.is_some() {
+                        s.last = last;
+                    }
+                    s.shuffle = shuffle;
+                    s.repeat = repeat.into();
+                });
+            }),
+            cx.observe_window_bounds(window, |_, window, cx| {
+                let maximized = window.is_maximized();
+                let b = window.bounds();
+                Settings::update(cx, |s| {
+                    // Taille « normale » gardée quand la fenêtre est agrandie.
+                    if maximized {
+                        if let Some(w) = &mut s.window {
+                            w.maximized = true;
+                        }
+                    } else {
+                        s.window = Some(WindowState {
+                            x: f32::from(b.origin.x),
+                            y: f32::from(b.origin.y),
+                            width: f32::from(b.size.width),
+                            height: f32::from(b.size.height),
+                            maximized: false,
+                        });
+                    }
+                });
+            }),
+        ];
 
         let shell = Self {
-            page: Page::from_env().unwrap_or(Page::RadioExplore),
-            follow_system_theme: true,
+            page: Page::from_env().unwrap_or(Page::from_key(&saved.page)),
+            follow_system_theme: saved.dark.is_none(),
             rt_status: RtStatus::Checking,
             player,
             player_bar,
@@ -139,8 +235,15 @@ impl Shell {
             artists,
             folders,
             location,
-            _subscriptions: vec![appearance_sub, enter_sub],
+            palette,
+            _system: system,
+            _subscriptions: subscriptions,
         };
+        shell.register_actions(cx.entity().downgrade(), cx);
+        // Aide au développement (builds debug) : palette ouverte au démarrage.
+        if cfg!(debug_assertions) && std::env::var_os("ONDES_PALETTE").is_some() {
+            cx.defer_in(window, |this, window, cx| this.open_palette(window, cx));
+        }
         shell.check_runtime(cx);
         if let Some(spec) = initial {
             shell.play(spec, cx);
@@ -225,14 +328,160 @@ impl Shell {
             )
     }
 
-    fn toggle_theme(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn toggle_theme(&mut self, cx: &mut Context<Self>) {
         self.follow_system_theme = false;
-        let mode = if cx.theme().is_dark() {
-            ThemeMode::Light
-        } else {
-            ThemeMode::Dark
-        };
-        Theme::change(mode, Some(window), cx);
+        let dark = !cx.theme().is_dark();
+        Theme::change(
+            if dark {
+                ThemeMode::Dark
+            } else {
+                ThemeMode::Light
+            },
+            None,
+            cx,
+        );
+        Settings::update(cx, |s| s.dark = Some(dark));
+    }
+
+    fn set_page(&mut self, page: Page, cx: &mut Context<Self>) {
+        self.page = page;
+        Settings::update(cx, |s| s.page = page.key().into());
+        cx.notify();
+    }
+
+    /// Actions globales : raccourcis clavier, palette, menus.
+    ///
+    /// Enregistrées au niveau de l'application (et non de la vue) pour
+    /// fonctionner aussi depuis la palette, ouverte dans une couche à part.
+    /// Celles qui ont besoin de la fenêtre sont différées après l'action en
+    /// cours, quand la fenêtre est de nouveau disponible.
+    fn register_actions(&self, shell: WeakEntity<Self>, cx: &mut App) {
+        let player = self.player.clone();
+
+        macro_rules! on_player {
+            ($action:ty, |$p:ident, $cx:ident| $body:expr) => {{
+                let player = player.clone();
+                cx.on_action(move |_: &$action, cx: &mut App| {
+                    player.update(cx, |$p, $cx| $body);
+                });
+            }};
+        }
+        on_player!(TogglePlay, |p, cx| p.toggle_play(cx));
+        on_player!(actions::Stop, |p, cx| p.stop(cx));
+        on_player!(Next, |p, cx| p.next(cx));
+        on_player!(Previous, |p, cx| p.prev(cx));
+        on_player!(SeekForward, |p, cx| p.seek_by(10_000, cx));
+        on_player!(SeekBackward, |p, cx| p.seek_by(-10_000, cx));
+        on_player!(VolumeUp, |p, cx| p.change_volume(0.05, cx));
+        on_player!(VolumeDown, |p, cx| p.change_volume(-0.05, cx));
+        on_player!(ToggleShuffle, |p, cx| p.toggle_shuffle(cx));
+        on_player!(CycleRepeat, |p, cx| p.cycle_repeat(cx));
+
+        macro_rules! with_window {
+            ($action:ty, |$this:ident, $window:ident, $cx:ident| $body:expr) => {{
+                let shell = shell.clone();
+                cx.on_action(move |_: &$action, cx: &mut App| {
+                    let shell = shell.clone();
+                    cx.defer(move |cx| {
+                        let Some(handle) = cx.active_window() else {
+                            return;
+                        };
+                        handle
+                            .update(cx, |_, $window, cx| {
+                                shell.update(cx, |$this, $cx| $body).ok();
+                            })
+                            .ok();
+                    });
+                });
+            }};
+        }
+        with_window!(OpenPalette, |this, window, cx| this
+            .open_palette(window, cx));
+        with_window!(FocusLocation, |this, window, cx| {
+            this.location.update(cx, |s, cx| s.focus(window, cx));
+        });
+        with_window!(ToggleFavorite, |this, window, cx| {
+            let station = this.player.read(cx).current_station();
+            match station {
+                Some(station) => toggle_favorite(&FavoritesModel::global(cx), &station, window, cx),
+                None => window.push_notification(
+                    Notification::info("Aucune radio en cours à ajouter aux favoris"),
+                    cx,
+                ),
+            }
+        });
+        with_window!(ToggleNotifications, |_this, window, cx| {
+            let enabled = !Settings::get(cx).notifications;
+            Settings::update(cx, |s| s.notifications = enabled);
+            window.push_notification(
+                Notification::info(if enabled {
+                    "Notifications activées"
+                } else {
+                    "Notifications désactivées"
+                }),
+                cx,
+            );
+        });
+
+        macro_rules! on_shell {
+            ($action:ty, |$this:ident, $cx:ident| $body:expr) => {{
+                let shell = shell.clone();
+                cx.on_action(move |_: &$action, cx: &mut App| {
+                    shell.update(cx, |$this, $cx| $body).ok();
+                });
+            }};
+        }
+        on_shell!(OpenFile, |this, cx| this.open_file_dialog(cx));
+        on_shell!(ToggleTheme, |this, cx| this.toggle_theme(cx));
+        on_shell!(GoExplore, |this, cx| this.set_page(Page::RadioExplore, cx));
+        on_shell!(GoFavorites, |this, cx| this
+            .set_page(Page::RadioFavorites, cx));
+        on_shell!(GoTracks, |this, cx| this.set_page(Page::LibraryTracks, cx));
+        on_shell!(GoAlbums, |this, cx| this.set_page(Page::LibraryAlbums, cx));
+        on_shell!(GoArtists, |this, cx| this
+            .set_page(Page::LibraryArtists, cx));
+        on_shell!(GoFolders, |this, cx| this
+            .set_page(Page::LibraryFolders, cx));
+    }
+
+    /// Palette de commandes (Ctrl+K) : toutes les actions, avec leur raccourci.
+    fn open_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let state = self.palette.clone();
+        state.update(cx, |s, cx| s.set_query("", window, cx));
+        let focus_on_mount = Rc::new(Cell::new(true));
+        window.open_dialog(cx, move |dialog, _, _| {
+            let state = state.clone();
+            let focus_on_mount = focus_on_mount.clone();
+            dialog
+                .close_button(false)
+                .p_0()
+                .content(move |content, window, cx| {
+                    if focus_on_mount.replace(false) {
+                        let state = state.clone();
+                        window.defer(cx, move |window, cx| {
+                            state.read(cx).focus_handle(cx).focus(window, cx);
+                        });
+                    }
+                    let mut command = Command::new(&state)
+                        .bordered(false)
+                        .rounded(cx.theme().radius_lg)
+                        .max_h(px(420.))
+                        .placeholder("Rechercher une commande…")
+                        .on_confirm(|_, window, cx| window.close_dialog(cx));
+                    for (label, entries) in actions::palette() {
+                        command = command.group(CommandGroup::new().label(label).items(
+                            entries.into_iter().map(|e| {
+                                CommandItem::new()
+                                    .label(e.label)
+                                    .icon(e.icon)
+                                    .keywords(e.keywords.iter().copied())
+                                    .action((e.action)())
+                            }),
+                        ));
+                    }
+                    content.child(command)
+                })
+        });
     }
 
     fn nav_item(&self, page: Page, cx: &mut Context<Self>) -> SidebarMenuItem {
@@ -241,12 +490,7 @@ impl Shell {
             .icon(page.icon())
             .active(self.page == page)
             .on_click(move |_, _, cx| {
-                entity
-                    .update(cx, |this, cx| {
-                        this.page = page;
-                        cx.notify();
-                    })
-                    .ok();
+                entity.update(cx, |this, cx| this.set_page(page, cx)).ok();
             })
     }
 
@@ -310,8 +554,8 @@ impl Shell {
                                 } else {
                                     "Thème sombre"
                                 })
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.toggle_theme(window, cx);
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.toggle_theme(cx);
                                 })),
                         ),
                 ),

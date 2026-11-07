@@ -1,0 +1,178 @@
+//! État persistant entre deux lancements : `~/.local/share/ondes/state.toml`.
+//!
+//! Volume, dernière source écoutée, page, thème, fenêtre, aléatoire et
+//! répétition, notifications. Écrit avec un léger délai après chaque
+//! changement (et de façon atomique) pour ne pas solliciter le disque.
+
+use std::path::PathBuf;
+use std::time::Duration;
+
+use gpui_kit::*;
+use ondes_radio::Station;
+use serde::{Deserialize, Serialize};
+
+const SAVE_DELAY: Duration = Duration::from_millis(800);
+
+/// Dernière source écoutée, proposée à la relecture au démarrage.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum LastSource {
+    Station {
+        station: Box<Station>,
+    },
+    Url {
+        url: String,
+    },
+    File {
+        path: PathBuf,
+    },
+    /// Morceau de la bibliothèque (retrouvé dans l'index pour ses tags).
+    Track {
+        path: PathBuf,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct WindowState {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+    #[serde(default)]
+    pub maximized: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AppState {
+    pub volume: f32,
+    /// `None` : suit le thème du système.
+    pub dark: Option<bool>,
+    pub page: String,
+    pub shuffle: bool,
+    pub repeat: String,
+    pub notifications: bool,
+    pub window: Option<WindowState>,
+    pub last: Option<LastSource>,
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self {
+            volume: 0.8,
+            dark: None,
+            page: "explore".into(),
+            shuffle: false,
+            repeat: "off".into(),
+            notifications: true,
+            window: None,
+            last: None,
+        }
+    }
+}
+
+impl AppState {
+    pub fn load() -> Self {
+        let path = crate::paths::state_file();
+        match std::fs::read_to_string(&path) {
+            Ok(text) => toml::from_str(&text).unwrap_or_else(|e| {
+                tracing::warn!(path = %path.display(), "état illisible, valeurs par défaut : {e}");
+                Self::default()
+            }),
+            Err(_) => Self::default(),
+        }
+    }
+
+    fn save(&self) -> std::io::Result<()> {
+        let path = crate::paths::state_file();
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        let text = toml::to_string_pretty(self).map_err(std::io::Error::other)?;
+        let tmp = path.with_extension("toml.tmp");
+        std::fs::write(&tmp, text)?;
+        std::fs::rename(&tmp, &path)
+    }
+}
+
+/// État partagé, enregistré après chaque modification.
+pub struct Settings {
+    pub state: AppState,
+    _save: Option<Task<()>>,
+}
+
+pub struct GlobalSettings(pub Entity<Settings>);
+impl Global for GlobalSettings {}
+
+impl Settings {
+    pub fn init(state: AppState, cx: &mut App) {
+        let entity = cx.new(|_| Self { state, _save: None });
+        cx.set_global(GlobalSettings(entity));
+    }
+
+    pub fn global(cx: &App) -> Entity<Settings> {
+        cx.global::<GlobalSettings>().0.clone()
+    }
+
+    pub fn get(cx: &App) -> AppState {
+        Self::global(cx).read(cx).state.clone()
+    }
+
+    /// Modifie l'état ; l'écriture sur disque est regroupée.
+    pub fn update(cx: &mut App, f: impl FnOnce(&mut AppState)) {
+        Self::global(cx).update(cx, |this, cx| {
+            let before = this.state.clone();
+            f(&mut this.state);
+            if this.state == before {
+                return;
+            }
+            cx.notify();
+            this._save = Some(cx.spawn(async move |this, cx| {
+                cx.background_executor().timer(SAVE_DELAY).await;
+                this.update(cx, |this, _| this.save_now()).ok();
+            }));
+        });
+    }
+
+    pub fn save_now(&mut self) {
+        self._save = None;
+        if let Err(e) = self.state.save() {
+            tracing::warn!("enregistrement de l'état impossible : {e}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AppState, LastSource, WindowState};
+
+    #[test]
+    fn round_trips_and_tolerates_missing_fields() {
+        let state = AppState {
+            volume: 0.42,
+            dark: Some(true),
+            last: Some(LastSource::Station {
+                station: Box::new(ondes_radio::Station::manual(
+                    "FIP",
+                    "https://icecast.radiofrance.fr/fip-midfi.mp3",
+                )),
+            }),
+            window: Some(WindowState {
+                x: 10.,
+                y: 20.,
+                width: 1100.,
+                height: 720.,
+                maximized: false,
+            }),
+            ..Default::default()
+        };
+        let text = toml::to_string_pretty(&state).unwrap();
+        assert_eq!(toml::from_str::<AppState>(&text).unwrap(), state);
+
+        // Fichier d'une version précédente : champs manquants = défauts.
+        let old: AppState = toml::from_str("volume = 0.5\n").unwrap();
+        assert_eq!(old.volume, 0.5);
+        assert!(old.notifications);
+        assert_eq!(old.last, None);
+    }
+}

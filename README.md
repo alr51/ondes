@@ -24,7 +24,23 @@ cargo run -- ~/Musique/morceau.flac
 
 Dans l'application : coller une URL (flux mp3/aac/ogg, `.pls`, `.m3u`) et
 appuyer sur Entrée, « Ouvrir un fichier… », ou glisser un fichier sur la fenêtre.
-`Ctrl+Q` pour quitter.
+Les touches multimédia du clavier et le panneau média du bureau (MPRIS)
+pilotent la lecture.
+
+### Raccourcis
+
+| Raccourci | Action |
+|---|---|
+| `Ctrl+K` ou `Ctrl+Maj+P` | Palette de commandes |
+| `Ctrl+Espace` | Lecture / pause |
+| `Alt+→` / `Alt+←` | Morceau suivant / précédent |
+| `Alt+Maj+→` / `Alt+Maj+←` | Avancer / reculer de 10 s |
+| `Ctrl+↑` / `Ctrl+↓` | Volume |
+| `Ctrl+U` / `Ctrl+R` | Aléatoire / mode de répétition |
+| `Ctrl+D` | Radio en cours : ajouter ou retirer des favoris |
+| `Ctrl+L` / `Ctrl+O` | Écouter une URL / ouvrir un fichier |
+| `Ctrl+1` … `Ctrl+6` | Pages (Explorer, Favoris, Morceaux, Albums, Artistes, Dossiers) |
+| `Ctrl+Q` | Quitter |
 
 ## Structure
 
@@ -38,10 +54,12 @@ appuyer sur Entrée, « Ouvrir un fichier… », ou glisser un fichier sur la fe
 ## Données
 
 - Favoris et index de la bibliothèque : `~/.local/share/ondes/ondes.db`
+- État (volume, dernière écoute, fenêtre…) : `~/.local/share/ondes/state.toml`
 - Cache des logos et pochettes : `~/.cache/ondes/{logos,covers}` (peut être supprimé sans risque)
 
 ## Développement
 
 En build debug, `ONDES_PAGE=tracks|albums|artists|folders|favorites` ouvre
-directement une page (captures d'écran automatisées). Avec
+directement une page et `ONDES_PALETTE=1` ouvre la palette (captures d'écran
+automatisées). Avec
 `XDG_DATA_HOME` / `XDG_CACHE_HOME`, l'application utilise des données isolées.

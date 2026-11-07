@@ -37,6 +37,10 @@ rayon = "1.12"
 walkdir = "2"
 notify = "8"
 fastrand = "2"
+# Touches multimédia et MPRIS (Linux via zbus, sans libdbus), SMTC (Windows), macOS.
+souvlaki = { version = "0.9", default-features = false, features = ["use_zbus"] }
+notify-rust = "4"
+toml = "1"
 reqwest = { version = "0.13", default-features = false, features = ["stream", "rustls", "http2", "charset", "json", "query"] }
 # Décodage via symphonia (MP3, AAC/MP4, FLAC, Vorbis, WAV) ; sortie via cpal.
 rodio = { version = "0.23", default-features = false, features = ["playback", "mp3", "mp4", "flac", "vorbis", "wav"] }

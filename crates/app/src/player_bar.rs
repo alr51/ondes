@@ -65,6 +65,12 @@ impl PlayerBar {
                 cx.notify();
             }),
             cx.observe_in(&player, window, |this, player, window, cx| {
+                // Volume changé ailleurs (raccourci, MPRIS) : le curseur suit.
+                let volume = player.read(cx).volume();
+                if (this.volume.read(cx).value().start() - volume).abs() > 0.001 {
+                    this.volume
+                        .update(cx, |s, cx| s.set_value(volume, window, cx));
+                }
                 if this.dragging.is_none() {
                     let p = player.read(cx);
                     let fraction = match p.track.as_ref().and_then(|t| t.duration) {
@@ -155,9 +161,10 @@ fn status(p: &Player) -> Status {
             }
         }
         PlaybackState::Ended => Status::Hint("Terminé".into()),
-        PlaybackState::Idle => match &p.track {
-            Some(_) => Status::Hint("Arrêté".into()),
-            None => Status::Hint("Colle une URL de radio ou ouvre un fichier".into()),
+        PlaybackState::Idle => match (&p.track, &p.resume) {
+            (Some(_), _) => Status::Hint("Arrêté".into()),
+            (None, Some(_)) => Status::Hint("Dernière écoute · Lecture pour reprendre".into()),
+            (None, None) => Status::Hint("Colle une URL de radio ou ouvre un fichier".into()),
         },
     }
 }

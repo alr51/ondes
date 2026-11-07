@@ -36,3 +36,8 @@ pub fn music_dir() -> Option<PathBuf> {
         .and_then(|d| d.audio_dir().map(|p| p.to_path_buf()))
         .filter(|p| p.is_dir())
 }
+
+/// État persistant (volume, dernière source, fenêtre…) : `~/.local/share/ondes/state.toml`.
+pub fn state_file() -> PathBuf {
+    database().with_file_name("state.toml")
+}
