@@ -30,7 +30,7 @@ sudo apt install libxkbcommon-dev libxkbcommon-x11-dev libxcb1-dev libx11-xcb-de
   libwayland-dev libvulkan-dev libfontconfig-dev libfreetype-dev libasound2-dev pkg-config
 ```
 
-La toolchain Rust (1.95) est fixée par `rust-toolchain.toml`.
+La toolchain Rust (1.98) est fixée par `rust-toolchain.toml`.
 
 ### Lancer
 
