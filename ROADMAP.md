@@ -1,0 +1,117 @@
+# Ondes — Roadmap
+
+Application desktop pour écouter des webradios et explorer les sons de l'ordinateur local.
+Stack : Rust, [GPUI](https://www.gpui.rs/) et [GPUI Kit](https://gpui-kit.com/) pour l'UI.
+
+## Stack technique
+
+| Besoin | Crate(s) |
+|---|---|
+| UI | `gpui-kit` (=0.9.0, embarque GPUI `gpui-pre` 0.3.11 — ne jamais lister `gpui` à part) |
+| Décodage audio | `symphonia` (MP3, AAC, FLAC, Vorbis, Opus, WAV) |
+| Sortie audio | `cpal` (ou `rodio` au début) |
+| Streaming HTTP | `reqwest` (stream) + tampon circulaire (`ringbuf`) ou `stream-download` |
+| Métadonnées ICY | parsing maison ou `icy-metadata` |
+| Annuaire de radios | API Radio Browser (gratuite, sans clé) — `radiobrowser` |
+| Playlists | `m3u` + parser PLS maison |
+| Scan disque | `walkdir` / `jwalk`, `notify` pour la surveillance |
+| Tags et pochettes | `lofty` |
+| Base de données | `rusqlite` + FTS5 |
+| Recherche floue | `nucleo` |
+| Touches média / MPRIS | `souvlaki` |
+| Config | `serde` + `toml`, `directories` |
+| Async | runtime `tokio` dédié, relié à l'exécuteur GPUI par des canaux |
+| Logs | `tracing` |
+
+## Architecture (workspace Cargo)
+
+```
+crates/
+├── app/       # binaire GPUI : fenêtres, vues, thème
+├── core/      # types partagés, pont tokio, commandes/événements, config
+├── audio/     # moteur audio sur thread dédié          (phase 1)
+├── sources/   # trait Source : HttpStream, LocalFile   (phase 1)
+├── radio/     # Radio Browser, favoris, M3U/PLS        (phase 2)
+└── library/   # scanner, index SQLite, recherche       (phase 3)
+```
+
+Principes :
+- **Thread audio dédié** : l'UI envoie des commandes (`Play`, `Pause`, `Seek`, `Volume`) par canal et reçoit des événements (`Position`, `Metadata`, `Buffering`, `Error`).
+- **Trait `Source` commun** à la radio et aux fichiers locaux.
+- **Async** : GPUI a son propre exécuteur ; tout ce qui demande tokio (`reqwest`…) tourne sur le runtime de `ondes-core::rt` et le résultat revient par un `oneshot` attendu dans `cx.spawn`.
+- **État UI en `Entity<T>`** GPUI, mis à jour par les événements du moteur.
+
+## Composants GPUI Kit par usage
+
+| Usage | Composant |
+|---|---|
+| Navigation | `sidebar::Sidebar`, `SidebarGroup`, `SidebarMenu` |
+| Thème clair/sombre | `Theme::change`, `ActiveTheme`, thèmes fournis |
+| Barre de lecture | `button::Button`, `slider::Slider` (volume, progression) |
+| Liste des stations | `VirtualList` / `list` |
+| Recherche | `input` |
+| Morceaux | `table` (DataTable) |
+| Onglets / panneaux | `tab`, `dock` |
+| Palette de commandes | `command`, `dialog` |
+| Statut | `status_bar`, `notification`, `spinner`, `progress` |
+| Icônes | `gpui_kit::assets::IconName` + `AllAssets` (catalogue Lucide complet) |
+
+## Phases
+
+### Phase 0 — Fondations
+- [x] Workspace, versions GPUI/GPUI Kit fixées
+- [x] CI (fmt, clippy, tests)
+- [x] Fenêtre GPUI : barre latérale + contenu + barre de lecture
+- [x] Thème clair/sombre (suit le système au démarrage, bascule manuelle)
+- [x] Pont tokio ↔ GPUI testé
+- **Livrable** : app vide qui s'ouvre, thème clair/sombre.
+
+### Phase 1 — MVP lecteur
+- [ ] Moteur audio (play/pause/stop/volume) sur thread dédié
+- [ ] Lecture d'un fichier local (boîte de dialogue)
+- [ ] Lecture d'une URL de flux HTTP (MP3/AAC), mise en tampon, reconnexion simple
+- [ ] Barre de lecture branchée : titre, play/pause, volume, état de mise en tampon
+- **Livrable** : on colle une URL de radio ou on ouvre un fichier, et ça joue.
+
+### Phase 2 — Webradios
+- [ ] Radio Browser : recherche par nom, pays, genre, langue
+- [ ] Liste virtualisée, logos chargés en asynchrone avec cache
+- [ ] Favoris et stations ajoutées à la main (SQLite)
+- [ ] Métadonnées ICY (titre/artiste en cours)
+- [ ] Import `.m3u` / `.pls`
+- **Livrable** : parcourir, chercher et mettre en favori des milliers de stations.
+
+### Phase 3 — Bibliothèque locale
+- [ ] Choix des dossiers, scan en arrière-plan avec progression
+- [ ] Tags et pochettes (`lofty`) indexés en SQLite
+- [ ] Recherche instantanée (FTS5 + `nucleo`)
+- [ ] Vues Morceaux / Albums / Artistes / Dossiers
+- [ ] Scan incrémental + surveillance `notify`
+- [ ] File d'attente, suivant/précédent, seek, aléatoire, répétition
+- **Livrable** : bibliothèque musicale utilisable au quotidien.
+
+### Phase 4 — Intégration système
+- [ ] Touches média, MPRIS/SMTC (`souvlaki`)
+- [ ] Notifications au changement de morceau
+- [ ] Raccourcis clavier (actions GPUI) et palette de commandes
+- [ ] Icône dans la zone de notification (optionnel)
+- [ ] Persistance de l'état (dernière station, volume, fenêtre)
+
+### Phase 5 — Finitions et distribution
+- [ ] Gestion d'erreurs propre (flux morts, codecs non pris en charge)
+- [ ] Paquets AppImage / Flatpak, `.dmg`, `.msi` (`cargo-packager`)
+- [ ] Mise à jour automatique (optionnel), page « À propos », licences
+
+### Backlog
+- Flux HLS (m3u8)
+- Égaliseur, ReplayGain, fondu enchaîné
+- Enregistrement d'un flux dans un fichier
+- Visualiseur (FFT, `rustfft`)
+- Historique des titres entendus
+- Minuteur de mise en veille
+
+## Risques
+1. **GPUI et GPUI Kit évoluent vite** (0.6 → 0.9 en peu de temps) : versions fixées avec `=`, montées de version groupées.
+2. **Flux radio hétérogènes** (redirections, ICY, HE-AAC, coupures) : garder un jeu de 20 à 30 URL de test.
+3. **Linux** : GPU compatible Vulkan requis ; audio via ALSA/PipeWire/PulseAudio (cpal). Tester tôt sur plusieurs machines.
+4. **Grosses bibliothèques** (50 000+ morceaux) : listes virtualisées, pochettes asynchrones, indexation par lots.

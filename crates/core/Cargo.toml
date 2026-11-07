@@ -1,0 +1,15 @@
+[package]
+name = "ondes-core"
+description = "Types partagés et pont async pour Ondes"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+tokio.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true
