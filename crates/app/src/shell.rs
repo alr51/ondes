@@ -21,7 +21,7 @@ use ondes_audio::SourceSpec;
 
 use crate::actions::{self, *};
 use crate::library_view::{GroupKind, LibraryFolders, LibraryGroups, LibraryTracks};
-use crate::player::Player;
+use crate::player::{Player, PlayerNotice};
 use crate::player_bar::PlayerBar;
 use crate::queue::Repeat;
 use crate::radio::FavoritesModel;
@@ -200,6 +200,17 @@ impl Shell {
                     s.repeat = repeat.into();
                 });
             }),
+            cx.subscribe_in(
+                &player,
+                window,
+                |_, _, notice: &PlayerNotice, window, cx| {
+                    let PlayerNotice::Skipped { title, reason } = notice;
+                    window.push_notification(
+                        Notification::warning(format!("« {title} » ignoré : {reason}")),
+                        cx,
+                    );
+                },
+            ),
             cx.observe_window_bounds(window, |_, window, cx| {
                 let maximized = window.is_maximized();
                 let b = window.bounds();
@@ -241,8 +252,16 @@ impl Shell {
         };
         shell.register_actions(cx.entity().downgrade(), cx);
         // Aide au développement (builds debug) : palette ouverte au démarrage.
-        if cfg!(debug_assertions) && std::env::var_os("ONDES_PALETTE").is_some() {
-            cx.defer_in(window, |this, window, cx| this.open_palette(window, cx));
+        if cfg!(debug_assertions)
+            && let Some(what) = std::env::var_os("ONDES_PALETTE")
+        {
+            cx.defer_in(window, move |this, window, cx| {
+                if what == "about" {
+                    crate::about::open(window, cx);
+                } else {
+                    this.open_palette(window, cx);
+                }
+            });
         }
         shell.check_runtime(cx);
         if let Some(spec) = initial {
@@ -397,6 +416,7 @@ impl Shell {
         }
         with_window!(OpenPalette, |this, window, cx| this
             .open_palette(window, cx));
+        with_window!(About, |_this, window, cx| crate::about::open(window, cx));
         with_window!(FocusLocation, |this, window, cx| {
             this.location.update(cx, |s, cx| s.focus(window, cx));
         });
@@ -537,9 +557,18 @@ impl Shell {
                 SidebarFooter::new().child(
                     h_flex()
                         .w_full()
-                        .justify_between()
+                        .gap_1()
                         .items_center()
                         .child(self.render_rt_status(cx))
+                        .child(div().flex_1())
+                        .child(
+                            Button::new("about")
+                                .icon(IconName::Info)
+                                .ghost()
+                                .small()
+                                .tooltip("À propos")
+                                .on_click(|_, window, cx| crate::about::open(window, cx)),
+                        )
                         .child(
                             Button::new("toggle-theme")
                                 .icon(if is_dark {

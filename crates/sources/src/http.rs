@@ -130,7 +130,7 @@ async fn connect(
             .header("Icy-MetaData", "1")
             .send()
             .await
-            .map_err(|e| SourceError::Network(e.to_string()))?;
+            .map_err(|e| network_error(&e))?;
         let status = resp.status();
         if !status.is_success() {
             return Err(SourceError::HttpStatus(status.as_u16()));
@@ -159,7 +159,7 @@ async fn read_limited(resp: reqwest::Response, limit: usize) -> Result<Vec<u8>, 
     let mut body = Vec::new();
     let mut stream = resp.bytes_stream();
     while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| SourceError::Network(e.to_string()))?;
+        let chunk = chunk.map_err(|e| network_error(&e))?;
         body.extend_from_slice(&chunk);
         if body.len() > limit {
             return Err(SourceError::EmptyPlaylist);
@@ -281,6 +281,44 @@ async fn forward(resp: reqwest::Response, tx: &flume::Sender<Bytes>, status: &St
     }
 }
 
+/// Erreur réseau en français, d'après sa cause (DNS, délai, TLS…).
+fn network_error(e: &reqwest::Error) -> SourceError {
+    // Le détail utile est souvent au fond de la chaîne des causes.
+    let mut chain = e.to_string();
+    let mut source = std::error::Error::source(e);
+    while let Some(cause) = source {
+        chain.push_str(" : ");
+        chain.push_str(&cause.to_string());
+        source = cause.source();
+    }
+    SourceError::Network(describe_network_error(
+        &chain,
+        e.is_timeout(),
+        e.is_connect(),
+    ))
+}
+
+fn describe_network_error(chain: &str, timeout: bool, connect: bool) -> String {
+    let lower = chain.to_lowercase();
+    if timeout {
+        "le serveur ne répond pas (délai dépassé)".into()
+    } else if lower.contains("dns")
+        || lower.contains("lookup address")
+        || lower.contains("name or service")
+    {
+        "serveur introuvable : adresse inconnue ou pas de connexion Internet".into()
+    } else if lower.contains("certificate") || lower.contains("tls") || lower.contains("handshake")
+    {
+        "connexion sécurisée impossible (certificat du serveur invalide)".into()
+    } else if lower.contains("refused") {
+        "connexion refusée : la station est sans doute hors ligne".into()
+    } else if connect {
+        "connexion impossible au serveur de la station".into()
+    } else {
+        chain.to_string()
+    }
+}
+
 fn backoff(attempt: u32) -> Duration {
     let ms = 500u64.saturating_mul(1 << attempt.saturating_sub(1).min(4));
     Duration::from_millis(ms.min(8_000))
@@ -391,6 +429,38 @@ mod tests {
     use std::sync::Mutex;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
+
+    #[test]
+    fn network_messages() {
+        assert!(describe_network_error("x", true, true).contains("délai"));
+        assert!(
+            describe_network_error(
+                "error sending request : dns error : failed to lookup address",
+                false,
+                true
+            )
+            .contains("introuvable")
+        );
+        assert!(
+            describe_network_error("invalid peer certificate", false, true).contains("certificat")
+        );
+        assert!(
+            describe_network_error("Connection refused (os error 111)", false, true)
+                .contains("hors ligne")
+        );
+    }
+
+    #[test]
+    fn unreachable_server_has_clear_message() {
+        // Port local fermé : connexion refusée.
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let err =
+            open_stream(rt.handle(), "http://127.0.0.1:9/flux", fast_opts(), |_| {}).unwrap_err();
+        assert!(err.to_string().contains("hors ligne"), "{err}");
+    }
 
     #[test]
     fn mime_hints() {

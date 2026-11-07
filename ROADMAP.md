@@ -106,11 +106,20 @@ Principes :
 - [x] Raccourcis, palette, notifications, touches multimédia — validés à la main
 
 ### Phase 5 — Finitions et distribution
-- [ ] Gestion d'erreurs propre (flux morts, codecs non pris en charge)
-- [ ] Paquets AppImage / Flatpak, `.dmg`, `.msi` (`cargo-packager`)
-- [ ] Mise à jour automatique (optionnel), page « À propos », licences
+- [x] Erreurs lisibles : serveur introuvable, délai, refus, 404/403/5xx, TLS ; Opus signalé (dans l'annuaire et à la lecture)
+- [x] Morceau illisible dans la file : notification et passage au suivant
+- [x] Journal dans `~/.local/share/ondes/ondes.log` (session précédente en `.1`), plantages consignés avec trace
+- [x] Paquets `.deb` et AppImage (`cargo-packager`, `Packager.toml`), icône, fichier `.desktop` (types audio, playlists)
+- [x] CI de release (étiquette `v*`) : `.deb`/AppImage, `.dmg`, installeur NSIS — **non éprouvée** sous macOS et Windows
+- [x] Page « À propos » : version, crédits, dossiers de données, licences des 617 dépendances (`scripts/third-party.py`)
+- [x] Licence du projet : `LICENSE-MIT` et `LICENSE-APACHE`
+- [ ] Flatpak — nécessite `flatpak-builder` et des sources Cargo vendorisées (`flatpak-cargo-generator`)
+- [ ] Mise à jour automatique — nécessite un dépôt public où publier les versions
+- [x] Installation du `.deb`, AppImage, passage d'un morceau illisible, « À propos » — validés à la main
 
 ### Backlog
+- Flatpak (Flathub) et mise à jour automatique (voir phase 5)
+- Builds macOS / Windows à vérifier (CI de release en place)
 - Icône dans la zone de notification (`tray-icon`) pour les bureaux qui en ont une
 - Titres ICY des flux Radio France (pas d'ICY : API dédiée à étudier)
 - Flux HLS (m3u8)

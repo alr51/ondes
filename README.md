@@ -1,11 +1,29 @@
 # Ondes
 
+[![CI](https://github.com/alr51/ondes/actions/workflows/ci.yml/badge.svg)](https://github.com/alr51/ondes/actions/workflows/ci.yml)
+
 Écouter des webradios et explorer les sons de l'ordinateur local.
 Rust + [GPUI](https://www.gpui.rs/) + [GPUI Kit](https://gpui-kit.com/).
 
 Voir [ROADMAP.md](ROADMAP.md).
 
-## Prérequis (Linux, Debian/Ubuntu)
+## Installation
+
+Paquets prêts à installer : [releases](https://github.com/alr51/ondes/releases).
+Ou localement, dans `target/packages/` après `cargo packager --release`
+(nécessite `cargo install cargo-packager --locked`) :
+
+```sh
+sudo apt install ./target/packages/ondes_0.1.0_amd64.deb   # Debian / Ubuntu
+./target/packages/ondes_0.1.0_x86_64.AppImage              # autres distributions
+```
+
+Une étiquette `v*` poussée sur GitHub déclenche la CI de release
+(`.deb`, AppImage, `.dmg`, installeur Windows).
+
+## Compiler depuis les sources
+
+### Prérequis (Linux, Debian/Ubuntu)
 
 ```sh
 sudo apt install libxkbcommon-dev libxkbcommon-x11-dev libxcb1-dev libx11-xcb-dev \
@@ -14,7 +32,7 @@ sudo apt install libxkbcommon-dev libxkbcommon-x11-dev libxcb1-dev libx11-xcb-de
 
 La toolchain Rust (1.95) est fixée par `rust-toolchain.toml`.
 
-## Lancer
+### Lancer
 
 ```sh
 cargo run                                   # RUST_LOG=ondes_audio=debug pour suivre le moteur
@@ -55,11 +73,20 @@ pilotent la lecture.
 
 - Favoris et index de la bibliothèque : `~/.local/share/ondes/ondes.db`
 - État (volume, dernière écoute, fenêtre…) : `~/.local/share/ondes/state.toml`
+- Journal : `~/.local/share/ondes/ondes.log` (session précédente : `ondes.log.1`)
 - Cache des logos et pochettes : `~/.cache/ondes/{logos,covers}` (peut être supprimé sans risque)
 
 ## Développement
+
+- `scripts/demo-music.sh` : bibliothèque de test (tags, pochettes, un fichier sans tags, un fichier cassé).
+- `scripts/third-party.py` : régénère `THIRD-PARTY-LICENSES.md` (affiché dans « À propos »).
 
 En build debug, `ONDES_PAGE=tracks|albums|artists|folders|favorites` ouvre
 directement une page et `ONDES_PALETTE=1` ouvre la palette (captures d'écran
 automatisées). Avec
 `XDG_DATA_HOME` / `XDG_CACHE_HOME`, l'application utilise des données isolées.
+
+## Licence
+
+MIT ou Apache-2.0, au choix (`LICENSE-MIT`, `LICENSE-APACHE`). Les licences des
+dépendances sont listées dans `THIRD-PARTY-LICENSES.md`.

@@ -34,7 +34,16 @@ impl StationRow {
         let theme = cx.theme();
         let on_play = self.on_play.clone();
         let on_favorite = self.on_favorite.clone();
-        let summary = self.station.summary();
+        // Codecs que le moteur ne sait pas décoder : signalés d'avance.
+        let unsupported = self
+            .station
+            .codec
+            .as_deref()
+            .is_some_and(|c| c.eq_ignore_ascii_case("opus"));
+        let summary = match (unsupported, self.station.summary()) {
+            (true, s) => format!("Opus non pris en charge · {s}"),
+            (false, s) => s,
+        };
 
         let fallback_color = theme.muted_foreground;
         let logo = div()
@@ -89,7 +98,11 @@ impl StationRow {
                         col.child(
                             div()
                                 .text_xs()
-                                .text_color(theme.muted_foreground)
+                                .text_color(if unsupported {
+                                    theme.warning
+                                } else {
+                                    theme.muted_foreground
+                                })
                                 .truncate()
                                 .child(summary),
                         )

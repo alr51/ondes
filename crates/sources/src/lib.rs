@@ -83,6 +83,19 @@ impl std::fmt::Debug for Opened {
     }
 }
 
+/// Message lisible pour un code HTTP d'erreur.
+fn http_status_message(code: u16) -> String {
+    match code {
+        404 | 410 => {
+            format!("flux introuvable ({code}) : la station a sans doute changé d'adresse")
+        }
+        401 | 403 => format!("accès refusé par le serveur ({code})"),
+        429 => "le serveur limite les connexions (429) : réessaie dans un moment".into(),
+        500..=599 => format!("le serveur de la station est en panne ({code})"),
+        _ => format!("le serveur a répondu {code}"),
+    }
+}
+
 /// Erreurs d'ouverture d'une source.
 #[derive(Debug, thiserror::Error)]
 pub enum SourceError {
@@ -92,7 +105,7 @@ pub enum SourceError {
     InvalidUrl(String),
     #[error("erreur réseau : {0}")]
     Network(String),
-    #[error("le serveur a répondu {0}")]
+    #[error("{}", http_status_message(*.0))]
     HttpStatus(u16),
     #[error("ce n'est pas un flux audio (type « {0} »)")]
     NotAudio(String),
@@ -121,6 +134,16 @@ mod tests {
             Some(SourceSpec::File("/tmp/a.mp3".into()))
         );
         assert_eq!(SourceSpec::parse("   "), None);
+        assert!(
+            SourceError::HttpStatus(404)
+                .to_string()
+                .contains("changé d'adresse")
+        );
+        assert!(
+            SourceError::HttpStatus(503)
+                .to_string()
+                .contains("en panne")
+        );
         assert_eq!(
             SourceSpec::parse("musique/a.mp3"),
             Some(SourceSpec::File(

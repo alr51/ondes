@@ -8,6 +8,7 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.95"
 license = "MIT OR Apache-2.0"
+repository = "https://github.com/alr51/ondes"
 
 [workspace.dependencies]
 ondes-core = { path = "crates/core" }
@@ -49,6 +50,11 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 [workspace.lints.clippy]
 dbg_macro = "deny"
 todo = "warn"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"
 
 [profile.dev.package."*"]
 # Les dépendances (GPUI) compilées optimisées : l'UI reste fluide en debug.

@@ -1,0 +1,42 @@
+# Configuration de cargo-packager : `cargo packager --release`
+# (.deb et AppImage sous Linux, .dmg sous macOS, .msi/NSIS sous Windows).
+name = "ondes"
+productName = "Ondes"
+version = "0.1.0"
+identifier = "io.github.alr51.ondes"
+homepage = "https://github.com/alr51/ondes"
+description = "Webradios et musique locale"
+longDescription = "Écoute des milliers de webradios (annuaire Radio Browser) et ta bibliothèque musicale locale."
+authors = ["alr51"]
+licenseFile = "LICENSE-MIT"
+category = "Music"
+beforePackagingCommand = "cargo build --release -p ondes"
+outDir = "target/packages"
+binariesDir = "target/release"
+binaries = [{ path = "ondes", main = true }]
+icons = [
+  "packaging/icons/ondes-32.png",
+  "packaging/icons/ondes-64.png",
+  "packaging/icons/ondes-128.png",
+  "packaging/icons/ondes-256.png",
+  "packaging/icons/ondes-512.png",
+]
+
+[deb]
+section = "sound"
+desktopTemplate = "packaging/ondes.desktop.hbs"
+# Bibliothèques chargées par GPUI (fenêtre, rendu Vulkan, polices) et par l'audio.
+depends = [
+  "libxkbcommon0",
+  "libxkbcommon-x11-0",
+  "libxcb1",
+  "libwayland-client0",
+  "libvulkan1",
+  "libfontconfig1",
+  "libfreetype6",
+  "libasound2t64 | libasound2",
+]
+
+[appimage]
+# Pilotes et chargeur Vulkan : fournis par le système hôte, pas embarqués.
+excludedLibs = ["libvulkan.so.1"]

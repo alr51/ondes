@@ -1,3 +1,4 @@
+mod about;
 mod actions;
 mod library;
 mod library_view;
@@ -20,13 +21,50 @@ use gpui_kit::*;
 
 use settings::{AppState, Settings};
 
-fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "ondes=info,ondes_core=info".into()),
-        )
+/// Journal sur la sortie d'erreur et dans un fichier (l'application
+/// installée n'a pas de terminal). Les plantages y sont aussi consignés.
+fn init_logging() {
+    use tracing_subscriber::prelude::*;
+
+    let filter = || {
+        tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+            "ondes=info,ondes_core=info,ondes_audio=info,ondes_sources=info,ondes_radio=info,ondes_library=info".into()
+        })
+    };
+    let path = paths::log_file();
+    let file = path
+        .parent()
+        .and_then(|dir| std::fs::create_dir_all(dir).ok())
+        .and_then(|_| {
+            let _ = std::fs::rename(&path, path.with_extension("log.1"));
+            std::fs::File::create(&path).ok()
+        });
+    let file_layer = file.map(|file| {
+        tracing_subscriber::fmt::layer()
+            .with_ansi(false)
+            .with_writer(std::sync::Mutex::new(file))
+            .with_filter(filter())
+    });
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer().with_filter(filter()))
+        .with(file_layer)
         .init();
+
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let backtrace = std::backtrace::Backtrace::force_capture();
+        tracing::error!("plantage : {info}\n{backtrace}");
+        default_hook(info);
+    }));
+    tracing::info!(
+        version = env!("CARGO_PKG_VERSION"),
+        journal = %path.display(),
+        "démarrage d'Ondes"
+    );
+}
+
+fn main() -> anyhow::Result<()> {
+    init_logging();
 
     let rt = runtime::Rt::start()?;
     let state = AppState::load();

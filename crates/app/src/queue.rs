@@ -54,6 +54,10 @@ impl Queue {
         self.items.is_empty()
     }
 
+    pub fn len(&self) -> usize {
+        self.items.len()
+    }
+
     pub fn current(&self) -> Option<&Track> {
         self.items.get(*self.order.get(self.pos)?)
     }

@@ -14,6 +14,14 @@ use crate::radio::Directory;
 use crate::runtime::Rt;
 use crate::settings::LastSource;
 
+/// Événement à signaler à l'utilisateur (notification dans la fenêtre).
+pub enum PlayerNotice {
+    /// Morceau de la file illisible, passé automatiquement.
+    Skipped { title: String, reason: String },
+}
+
+impl EventEmitter<PlayerNotice> for Player {}
+
 pub struct Player {
     engine: Option<AudioEngine>,
     pub state: PlaybackState,
@@ -31,6 +39,8 @@ pub struct Player {
     pub queue: Queue,
     /// Source du lancement précédent, relancée par « Lecture ».
     pub resume: Option<LastSource>,
+    /// Morceaux illisibles d'affilée (évite de boucler sur une file entière).
+    failures_in_row: usize,
     volume: f32,
     _events: Task<()>,
 }
@@ -78,6 +88,7 @@ impl Player {
             reconnecting: None,
             queue: Queue::default(),
             resume: None,
+            failures_in_row: 0,
             volume,
             _events: events_task,
         }
@@ -93,6 +104,9 @@ impl Player {
             }
             Event::State(state) => {
                 self.state = state;
+                if state == PlaybackState::Playing {
+                    self.failures_in_row = 0;
+                }
                 match state {
                     PlaybackState::Loading => self.error = None,
                     PlaybackState::Playing | PlaybackState::Idle => self.reconnecting = None,
@@ -108,6 +122,25 @@ impl Player {
             }
             Event::Position(pos) => self.position = pos,
             Event::Reconnecting { attempt } => self.reconnecting = Some(attempt),
+            // Morceau illisible dans une file : on le signale et on passe au suivant.
+            Event::Error(reason) if !self.queue.is_empty() && self.track.is_none() => {
+                let title = self
+                    .queue
+                    .current()
+                    .map(|t| t.title.clone())
+                    .unwrap_or_default();
+                self.failures_in_row += 1;
+                cx.emit(PlayerNotice::Skipped {
+                    title,
+                    reason: reason.clone(),
+                });
+                if self.failures_in_row < self.queue.len() && self.queue.next(false).is_some() {
+                    self.play_current(cx);
+                } else {
+                    self.error = Some(reason);
+                    self.pending = None;
+                }
+            }
             Event::Error(message) => {
                 self.error = Some(message);
                 self.pending = None;

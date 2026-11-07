@@ -27,6 +27,7 @@ gpui_kit::actions!(
         OpenFile,
         ToggleTheme,
         ToggleNotifications,
+        About,
         GoExplore,
         GoFavorites,
         GoTracks,
@@ -168,6 +169,12 @@ pub fn palette() -> Vec<(&'static str, Vec<PaletteEntry>)> {
                     Bell,
                     ToggleNotifications,
                     ["notification"]
+                ),
+                entry!(
+                    "À propos d'Ondes",
+                    Info,
+                    About,
+                    ["version", "licences", "journal"]
                 ),
                 entry!("Quitter", LogOut, Quit, ["quit", "fermer"]),
             ],

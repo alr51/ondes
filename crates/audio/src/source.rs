@@ -92,12 +92,9 @@ pub fn prepare(opened: Opened, config: BufferConfig, start: Duration) -> Result<
     if let Some(len) = byte_len {
         builder = builder.with_byte_len(len);
     }
-    let decoder = builder.build().map_err(|e| match e {
-        rodio::decoder::DecoderError::UnrecognizedFormat => {
-            "format audio non reconnu ou non pris en charge".to_string()
-        }
-        other => format!("décodage impossible : {other}"),
-    })?;
+    let decoder = builder
+        .build()
+        .map_err(|e| unsupported_message(&e, mime.as_deref(), hint.as_deref()))?;
 
     let mut decoder = decoder;
     if !start.is_zero() && !live {
@@ -139,6 +136,29 @@ pub fn prepare(opened: Opened, config: BufferConfig, start: Duration) -> Result<
         channels: channels.get(),
         duration,
     })
+}
+
+/// Message clair quand le décodeur refuse la source.
+fn unsupported_message(
+    error: &rodio::decoder::DecoderError,
+    mime: Option<&str>,
+    hint: Option<&str>,
+) -> String {
+    let format = mime.or(hint).unwrap_or_default().to_lowercase();
+    if format.contains("opus") || format == "ogg" || format.ends_with("/ogg") {
+        // symphonia lit Ogg Vorbis mais pas Ogg Opus, fréquent chez les radios.
+        return "format non pris en charge : probablement de l'Opus (seul Ogg Vorbis est lu)"
+            .into();
+    }
+    match error {
+        rodio::decoder::DecoderError::UnrecognizedFormat if format.is_empty() => {
+            "format audio non reconnu".into()
+        }
+        rodio::decoder::DecoderError::UnrecognizedFormat => {
+            format!("format non pris en charge ({format})")
+        }
+        other => format!("décodage impossible : {other}"),
+    }
 }
 
 /// Décode jusqu'à la fin ou jusqu'à ce que la source soit abandonnée.

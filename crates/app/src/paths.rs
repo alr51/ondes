@@ -41,3 +41,8 @@ pub fn music_dir() -> Option<PathBuf> {
 pub fn state_file() -> PathBuf {
     database().with_file_name("state.toml")
 }
+
+/// Journal de la session : `~/.local/share/ondes/ondes.log` (le précédent en `.1`).
+pub fn log_file() -> PathBuf {
+    database().with_file_name("ondes.log")
+}

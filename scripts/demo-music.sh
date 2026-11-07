@@ -23,4 +23,6 @@ mk "Les Ondes Sinusoïdales" "Harmoniques" 2023 teal 3 "Harmonie"
 mk "Beyoncé Test" "Déjà Vu Sessions" 2019 purple 3 "Session"
 mkdir -p "$M/Divers"
 ffmpeg -loglevel error -f lavfi -i "sine=frequency=500:duration=15" -c:a flac "$M/Divers/sans tags.flac"
+# Fichier illisible, pour vérifier que la lecture passe au morceau suivant.
+head -c 20000 /dev/urandom > "$M/Divers/fichier cassé.mp3"
 echo "Bibliothèque de test : $(cd "$M" && pwd)"
