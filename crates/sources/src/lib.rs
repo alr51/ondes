@@ -5,6 +5,7 @@
 //! non). Le décodage lui-même est fait par `ondes-audio`.
 
 mod http;
+mod icy;
 mod local;
 mod playlist;
 
@@ -12,8 +13,9 @@ use std::io::{Read, Seek};
 use std::path::PathBuf;
 
 pub use http::{HttpOptions, StreamStatus, open_stream};
+pub use icy::{IcyDemuxer, parse_stream_title};
 pub use local::open_file;
-pub use playlist::{PlaylistKind, first_stream_url};
+pub use playlist::{PlaylistEntry, PlaylistKind, first_stream_url, parse_entries};
 
 /// Ce que l'utilisateur demande à écouter.
 #[derive(Debug, Clone, PartialEq, Eq)]

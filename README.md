@@ -31,4 +31,10 @@ appuyer sur Entrée, « Ouvrir un fichier… », ou glisser un fichier sur la fe
 - `crates/app` : binaire GPUI (fenêtre, vues)
 - `crates/core` : types partagés et pont tokio ↔ GPUI
 - `crates/audio` : moteur audio (thread dédié, commandes / événements)
-- `crates/sources` : fichiers locaux, flux HTTP avec reconnexion, playlists
+- `crates/sources` : fichiers locaux, flux HTTP avec reconnexion, ICY, playlists
+- `crates/radio` : client Radio Browser, favoris SQLite, import de playlists
+
+## Données
+
+- Favoris : `~/.local/share/ondes/ondes.db`
+- Cache des logos : `~/.cache/ondes/logos` (peut être supprimé sans risque)

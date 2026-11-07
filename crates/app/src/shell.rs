@@ -17,6 +17,8 @@ use ondes_audio::SourceSpec;
 
 use crate::player::Player;
 use crate::player_bar::PlayerBar;
+use crate::radio_explore::RadioExplore;
+use crate::radio_favorites::RadioFavorites;
 use crate::runtime::Rt;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -51,8 +53,7 @@ impl Page {
 
     fn placeholder(self) -> &'static str {
         match self {
-            Page::RadioExplore => "La recherche Radio Browser arrive en phase 2.",
-            Page::RadioFavorites => "Tes stations favorites apparaîtront ici (phase 2).",
+            Page::RadioExplore | Page::RadioFavorites => "",
             Page::LibraryTracks | Page::LibraryAlbums | Page::LibraryFolders => {
                 "La bibliothèque locale arrive en phase 3."
             }
@@ -74,6 +75,8 @@ pub struct Shell {
     rt_status: RtStatus,
     player: Entity<Player>,
     player_bar: Entity<PlayerBar>,
+    explore: Entity<RadioExplore>,
+    favorites: Entity<RadioFavorites>,
     /// Champ « URL ou chemin » de la barre d'ouverture rapide.
     location: Entity<InputState>,
     _subscriptions: Vec<Subscription>,
@@ -100,6 +103,8 @@ impl Shell {
 
         let player = cx.new(|cx| Player::new(0.8, cx));
         let player_bar = cx.new(|cx| PlayerBar::new(player.clone(), cx));
+        let explore = cx.new(|cx| RadioExplore::new(player.clone(), window, cx));
+        let favorites = cx.new(|cx| RadioFavorites::new(player.clone(), window, cx));
 
         let shell = Self {
             page: Page::RadioExplore,
@@ -107,6 +112,8 @@ impl Shell {
             rt_status: RtStatus::Checking,
             player,
             player_bar,
+            explore,
+            favorites,
             location,
             _subscriptions: vec![appearance_sub, enter_sub],
         };
@@ -316,8 +323,10 @@ impl Shell {
             .gap_4()
             .child(quick_open)
             .child(div().text_xl().font_semibold().child(self.page.title()))
-            .child(
-                v_flex()
+            .child(match self.page {
+                Page::RadioExplore => self.explore.clone().into_any_element(),
+                Page::RadioFavorites => self.favorites.clone().into_any_element(),
+                _ => v_flex()
                     .flex_1()
                     .items_center()
                     .justify_center()
@@ -328,8 +337,9 @@ impl Shell {
                     .border_color(theme.border)
                     .text_color(theme.muted_foreground)
                     .child(Icon::new(self.page.icon()).large())
-                    .child(div().text_sm().child(self.page.placeholder())),
-            )
+                    .child(div().text_sm().child(self.page.placeholder()))
+                    .into_any_element(),
+            })
     }
 }
 

@@ -77,6 +77,8 @@ pub enum Event {
     Track(TrackInfo),
     /// Position de lecture (émise régulièrement pendant la lecture).
     Position(Duration),
+    /// Titre en cours annoncé par la radio (ICY), au moment où il devient audible.
+    NowPlaying(String),
     /// Flux coupé, reconnexion en cours.
     Reconnecting {
         attempt: u32,

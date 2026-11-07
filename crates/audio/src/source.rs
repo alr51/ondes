@@ -50,6 +50,11 @@ impl Shared {
     pub fn is_starved(&self) -> bool {
         self.starved.load(Ordering::Relaxed)
     }
+
+    /// Échantillons décodés en attente de lecture.
+    pub fn queued_samples(&self) -> usize {
+        self.queued.load(Ordering::Relaxed)
+    }
 }
 
 /// Résultat de la préparation : de quoi jouer, et quoi afficher.

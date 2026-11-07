@@ -1,7 +1,13 @@
+mod logos;
+mod paths;
 mod player;
 mod player_bar;
+mod radio;
+mod radio_explore;
+mod radio_favorites;
 mod runtime;
 mod shell;
+mod station_row;
 
 use gpui_kit::assets::AllAssets;
 use gpui_kit::*;
@@ -28,6 +34,9 @@ fn main() -> anyhow::Result<()> {
         .run(move |cx| {
             gpui_kit::init(cx);
             cx.set_global(rt);
+            radio::Directory::init(cx);
+            radio::FavoritesModel::init(cx);
+            logos::Logos::init(cx);
 
             cx.bind_keys([KeyBinding::new("ctrl-q", Quit, None)]);
             cx.on_action(|_: &Quit, cx| cx.quit());

@@ -13,6 +13,7 @@ license = "MIT OR Apache-2.0"
 ondes-core = { path = "crates/core" }
 ondes-audio = { path = "crates/audio" }
 ondes-sources = { path = "crates/sources" }
+ondes-radio = { path = "crates/radio" }
 # GPUI Kit embarque GPUI (`gpui-pre`) : version exacte, ne jamais ajouter `gpui` séparément.
 gpui-kit = "=0.9.0"
 tokio = { version = "1.54", features = ["rt-multi-thread", "time", "sync", "macros"] }
@@ -23,7 +24,14 @@ flume = "0.12"
 url = "2.5"
 bytes = "1"
 futures-util = "0.3"
-reqwest = { version = "0.13", default-features = false, features = ["stream", "rustls", "http2", "charset"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.41", features = ["bundled"] }
+directories = "6"
+# Déjà dans l'arbre via GPUI : réduction des logos avant mise en cache.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "ico", "bmp"] }
+sha2 = "0.10"
+reqwest = { version = "0.13", default-features = false, features = ["stream", "rustls", "http2", "charset", "json", "query"] }
 # Décodage via symphonia (MP3, AAC/MP4, FLAC, Vorbis, WAV) ; sortie via cpal.
 rodio = { version = "0.23", default-features = false, features = ["playback", "mp3", "mp4", "flac", "vorbis", "wav"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

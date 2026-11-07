@@ -1,0 +1,22 @@
+[package]
+name = "ondes-radio"
+description = "Webradios d'Ondes : Radio Browser, favoris, import de playlists"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+ondes-sources.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+rusqlite.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+
+[lints]
+workspace = true

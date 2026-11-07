@@ -14,6 +14,7 @@ use futures_util::StreamExt;
 use reqwest::header::{CONTENT_LENGTH, CONTENT_TYPE, HeaderMap};
 use tokio::runtime::Handle;
 
+use crate::icy::IcyDemuxer;
 use crate::playlist::{PlaylistKind, first_stream_url};
 use crate::{Opened, SourceError};
 
@@ -49,6 +50,8 @@ pub enum StreamStatus {
     Reconnecting { attempt: u32 },
     /// Abandon : le lecteur va atteindre la fin du flux.
     Failed(String),
+    /// Nouveau titre annoncé par le flux (métadonnées ICY).
+    Title(String),
 }
 
 type StatusFn = Arc<dyn Fn(StreamStatus) + Send + Sync>;
@@ -123,6 +126,8 @@ async fn connect(
     for _ in 0..MAX_PLAYLIST_DEPTH {
         let resp = client
             .get(&url)
+            // Demande les titres en cours ; retirés du flux par `IcyDemuxer`.
+            .header("Icy-MetaData", "1")
             .send()
             .await
             .map_err(|e| SourceError::Network(e.to_string()))?;
@@ -178,7 +183,7 @@ async fn pump(
     loop {
         let mut last_error = None;
         if let Some(r) = resp.take() {
-            match forward(r, &tx).await {
+            match forward(r, &tx, &status).await {
                 Forward::ReceiverGone => return,
                 Forward::Ended { received, error } => {
                     if received {
@@ -227,7 +232,14 @@ enum Forward {
     },
 }
 
-async fn forward(resp: reqwest::Response, tx: &flume::Sender<Bytes>) -> Forward {
+async fn forward(resp: reqwest::Response, tx: &flume::Sender<Bytes>, status: &StatusFn) -> Forward {
+    let mut icy = resp
+        .headers()
+        .get("icy-metaint")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|&n| n > 0)
+        .map(IcyDemuxer::new);
     let mut stream = resp.bytes_stream();
     let mut received = false;
     loop {
@@ -237,8 +249,20 @@ async fn forward(resp: reqwest::Response, tx: &flume::Sender<Bytes>) -> Forward 
                     continue;
                 }
                 received = true;
-                if tx.send_async(chunk).await.is_err() {
-                    return Forward::ReceiverGone;
+                let audio = match &mut icy {
+                    Some(demux) => {
+                        let out = demux.feed(chunk);
+                        if let Some(title) = out.title {
+                            status(StreamStatus::Title(title));
+                        }
+                        out.audio
+                    }
+                    None => vec![chunk],
+                };
+                for piece in audio {
+                    if tx.send_async(piece).await.is_err() {
+                        return Forward::ReceiverGone;
+                    }
                 }
             }
             Some(Err(e)) => {
@@ -484,6 +508,37 @@ mod tests {
         assert_eq!(events[0], StreamStatus::Reconnecting { attempt: 1 });
         assert_eq!(events[1], StreamStatus::Reconnected);
         assert!(matches!(events.last(), Some(StreamStatus::Failed(_))));
+    }
+
+    #[test]
+    fn strips_icy_metadata_and_reports_title() {
+        let mut body = b"abcd".to_vec();
+        let meta = b"StreamTitle='Artiste - Titre';";
+        let blocks = meta.len().div_ceil(16);
+        body.push(blocks as u8);
+        body.extend(meta);
+        body.resize(4 + 1 + blocks * 16, 0);
+        body.extend(b"efgh");
+        let resp = response("Content-Type: audio/mpeg\r\nicy-metaint: 4\r\n", &body);
+        let (rt, base) = serve(move |_| vec![resp]);
+
+        let titles = Arc::new(Mutex::new(Vec::new()));
+        let t = titles.clone();
+        let mut opened = open_stream(
+            rt.handle(),
+            &format!("{base}/live"),
+            fast_opts(),
+            move |s| {
+                if let StreamStatus::Title(title) = s {
+                    t.lock().unwrap().push(title);
+                }
+            },
+        )
+        .unwrap();
+        let mut got = [0u8; 8];
+        opened.reader.read_exact(&mut got).unwrap();
+        assert_eq!(&got, b"abcdefgh");
+        assert_eq!(*titles.lock().unwrap(), vec!["Artiste - Titre".to_string()]);
     }
 
     #[test]

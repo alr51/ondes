@@ -4,17 +4,20 @@ use std::time::Duration;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::{
-    ActiveTheme, Disableable, Sizable, StyledExt,
+    ActiveTheme, Disableable, Icon, Sizable, StyledExt,
     button::{Button, ButtonVariants},
     h_flex,
     slider::{Slider, SliderEvent, SliderState},
     spinner::Spinner,
     v_flex,
 };
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use ondes_audio::PlaybackState;
 
 use crate::player::Player;
+use crate::radio::FavoritesModel;
+use crate::radio_explore::toggle_favorite;
 
 pub struct PlayerBar {
     player: Entity<Player>,
@@ -40,6 +43,7 @@ impl PlayerBar {
                 }
             }),
             cx.observe(&player, |_, _, cx| cx.notify()),
+            cx.observe(&FavoritesModel::global(cx), |_, _, cx| cx.notify()),
         ];
         Self {
             player,
@@ -60,6 +64,8 @@ impl PlayerBar {
 /// Sous-titre : état de la lecture, ou erreur.
 enum Status {
     Hint(String),
+    /// Titre en cours d'une radio.
+    NowPlaying(String),
     Busy(String),
     Error(String),
 }
@@ -87,9 +93,12 @@ fn status(p: &Player) -> Status {
                 ""
             };
             match &p.track {
-                Some(t) if t.live => {
-                    Status::Hint(format!("{paused}En direct · {}{format}", clock(p.position)))
-                }
+                Some(t) if t.live => match &p.now_playing {
+                    Some(title) => Status::NowPlaying(format!("{paused}♪ {title}")),
+                    None => {
+                        Status::Hint(format!("{paused}En direct · {}{format}", clock(p.position)))
+                    }
+                },
                 Some(t) => Status::Hint(format!(
                     "{paused}{} / {}{format}",
                     clock(p.position),
@@ -120,12 +129,12 @@ impl Render for PlayerBar {
         let theme = cx.theme();
         let p = self.player.read(cx);
 
-        let title = p
-            .track
+        let title = p.title().unwrap_or_else(|| "Aucune lecture".into());
+        let station = p.current_station();
+        let favorites = FavoritesModel::global(cx);
+        let favorite = station
             .as_ref()
-            .map(|t| t.title.clone())
-            .or_else(|| p.pending.clone())
-            .unwrap_or_else(|| "Aucune lecture".into());
+            .is_some_and(|s| favorites.read(cx).contains(&s.url));
         let live = p.track.as_ref().is_some_and(|t| t.live);
         let active = p.state.is_active();
         let has_source = p.has_source();
@@ -135,6 +144,11 @@ impl Render for PlayerBar {
             Status::Hint(text) => div()
                 .text_xs()
                 .text_color(theme.muted_foreground)
+                .truncate()
+                .child(text),
+            Status::NowPlaying(text) => div()
+                .text_xs()
+                .text_color(theme.foreground)
                 .truncate()
                 .child(text),
             Status::Busy(text) => h_flex()
@@ -188,7 +202,28 @@ impl Render for PlayerBar {
                             .min_w_0()
                             .child(div().text_sm().font_medium().truncate().child(title))
                             .child(subtitle),
-                    ),
+                    )
+                    .when_some(station, |row, station| {
+                        let favs = favorites.clone();
+                        row.child(
+                            Button::new("player-fav")
+                                .icon(if favorite {
+                                    Icon::new(IconName::Heart).text_color(theme.danger)
+                                } else {
+                                    Icon::new(IconName::Heart)
+                                })
+                                .ghost()
+                                .small()
+                                .tooltip(if favorite {
+                                    "Retirer des favoris"
+                                } else {
+                                    "Ajouter aux favoris"
+                                })
+                                .on_click(move |_, window, cx| {
+                                    toggle_favorite(&favs, &station, window, cx);
+                                }),
+                        )
+                    }),
             )
             // Transport
             .child(

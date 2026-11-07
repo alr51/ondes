@@ -1,8 +1,9 @@
 //! Thread du moteur : reçoit les commandes, pilote la sortie, émet les événements.
 
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use ondes_sources::{HttpOptions, SourceSpec, StreamStatus, open_file, open_stream};
 use rodio::mixer::Mixer;
@@ -92,6 +93,8 @@ impl AudioEngine {
                     current: None,
                     last_spec: None,
                     last_pos_secs: None,
+                    titles: VecDeque::new(),
+                    early_title: None,
                 }
                 .run(rx);
             })?;
@@ -142,6 +145,10 @@ struct Engine {
     /// Dernière source demandée, pour « Lecture » après arrêt ou fin.
     last_spec: Option<SourceSpec>,
     last_pos_secs: Option<u64>,
+    /// Titres ICY reçus, à annoncer quand l'audio correspondant sera joué.
+    titles: VecDeque<(Instant, String)>,
+    /// Titre reçu avant la fin du chargement : annoncé avec la piste.
+    early_title: Option<String>,
 }
 
 impl Engine {
@@ -182,6 +189,8 @@ impl Engine {
         self.generation += 1;
         self.current = None;
         self.last_pos_secs = None;
+        self.titles.clear();
+        self.early_title = None;
     }
 
     fn command(&mut self, cmd: Command) {
@@ -277,6 +286,9 @@ impl Engine {
                 player.set_volume(perceptual(self.volume));
                 player.append(prepared.source);
                 self.emit(Event::Track(info.clone()));
+                if let Some(title) = self.early_title.take() {
+                    self.emit(Event::NowPlaying(title));
+                }
                 self.current = Some(Current {
                     player,
                     shared: prepared.shared,
@@ -295,6 +307,18 @@ impl Engine {
         match status {
             StreamStatus::Reconnecting { attempt } => self.emit(Event::Reconnecting { attempt }),
             StreamStatus::Reconnected => tracing::info!("flux reconnecté"),
+            StreamStatus::Title(title) => match &self.current {
+                Some(cur) => {
+                    // Le réseau a de l'avance : on attend que la réserve soit jouée.
+                    let per_sec =
+                        (cur.info.sample_rate as usize * cur.info.channels as usize).max(1);
+                    let ahead = Duration::from_secs_f64(
+                        cur.shared.queued_samples() as f64 / per_sec as f64,
+                    );
+                    self.titles.push_back((Instant::now() + ahead, title));
+                }
+                None => self.early_title = Some(title),
+            },
             StreamStatus::Failed(reason) => {
                 self.emit(Event::Error(format!("flux interrompu : {reason}")))
             }
@@ -319,6 +343,16 @@ impl Engine {
             PlaybackState::Buffering
         } else {
             PlaybackState::Playing
+        };
+        while let Some((due, _)) = self.titles.front()
+            && *due <= Instant::now()
+        {
+            if let Some((_, title)) = self.titles.pop_front() {
+                self.emit(Event::NowPlaying(title));
+            }
+        }
+        let Some(cur) = &self.current else {
+            return;
         };
         let pos = cur.player.get_pos();
         self.set_state(state);

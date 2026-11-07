@@ -31,7 +31,7 @@ crates/
 ├── core/      # types partagés, pont tokio, commandes/événements, config
 ├── audio/     # moteur audio sur thread dédié
 ├── sources/   # fichiers locaux, flux HTTP, playlists
-├── radio/     # Radio Browser, favoris, M3U/PLS        (phase 2)
+├── radio/     # Radio Browser, favoris (SQLite), import de playlists
 └── library/   # scanner, index SQLite, recherche       (phase 3)
 ```
 
@@ -77,11 +77,14 @@ Principes :
 - **Livrable** : on colle une URL de radio ou on ouvre un fichier, et ça joue.
 
 ### Phase 2 — Webradios
-- [ ] Radio Browser : recherche par nom, pays, genre, langue
-- [ ] Liste virtualisée, logos chargés en asynchrone avec cache
-- [ ] Favoris et stations ajoutées à la main (SQLite)
-- [ ] Métadonnées ICY (titre/artiste en cours)
-- [ ] Import `.m3u` / `.pls`
+- [x] Radio Browser : recherche par nom (avec délai de frappe), filtres pays / langue / genre, bascule entre miroirs
+- [x] Liste virtualisée (`uniform_list`) avec chargement par pages de 100 au défilement
+- [x] Logos : téléchargés pour les lignes visibles, réduits à 96 px, cache disque (`~/.cache/ondes/logos`)
+- [x] Favoris (SQLite, `~/.local/share/ondes/ondes.db`) : ♡ dans les listes et la barre de lecture, ajout manuel
+- [x] Métadonnées ICY : titre en cours, affiché au moment où il devient audible
+- [x] Import `.m3u` / `.pls` (titres conservés, doublons ignorés)
+- [x] Comptage des écoutes Radio Browser (recommandé par l'API)
+- [x] Recherche, filtres, défilement infini, favoris, ajout manuel, import — validés à la main
 - **Livrable** : parcourir, chercher et mettre en favori des milliers de stations.
 
 ### Phase 3 — Bibliothèque locale
@@ -106,6 +109,7 @@ Principes :
 - [ ] Mise à jour automatique (optionnel), page « À propos », licences
 
 ### Backlog
+- Titres ICY des flux Radio France (pas d'ICY : API dédiée à étudier)
 - Flux HLS (m3u8)
 - Égaliseur, ReplayGain, fondu enchaîné
 - Enregistrement d'un flux dans un fichier

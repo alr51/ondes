@@ -5,13 +5,19 @@ use std::time::Duration;
 
 use gpui_kit::*;
 use ondes_audio::{AudioEngine, Command, Event, PlaybackState, SourceSpec, TrackInfo};
+use ondes_radio::Station;
 
+use crate::radio::Directory;
 use crate::runtime::Rt;
 
 pub struct Player {
     engine: Option<AudioEngine>,
     pub state: PlaybackState,
     pub track: Option<TrackInfo>,
+    /// Station de l'annuaire ou des favoris en cours, si la lecture vient de là.
+    pub station: Option<Station>,
+    /// Titre en cours annoncé par la radio.
+    pub now_playing: Option<String>,
     /// Libellé affiché pendant l'ouverture d'une nouvelle source.
     pub pending: Option<String>,
     pub position: Duration,
@@ -56,6 +62,8 @@ impl Player {
             engine,
             state: PlaybackState::Idle,
             track: None,
+            station: None,
+            now_playing: None,
             pending: None,
             position: Duration::ZERO,
             error,
@@ -75,7 +83,9 @@ impl Player {
                     _ => {}
                 }
             }
+            Event::NowPlaying(title) => self.now_playing = Some(title),
             Event::Track(track) => {
+                self.now_playing = None;
                 self.track = Some(track);
                 self.pending = None;
                 self.position = Duration::ZERO;
@@ -96,7 +106,21 @@ impl Player {
     }
 
     pub fn load(&mut self, spec: SourceSpec, cx: &mut Context<Self>) {
-        self.pending = Some(spec.label());
+        self.station = None;
+        self.start(spec.label(), spec, cx);
+    }
+
+    pub fn play_station(&mut self, station: Station, cx: &mut Context<Self>) {
+        Directory::count_click(&station, cx);
+        let spec = SourceSpec::Url(station.url.clone());
+        let label = station.name.clone();
+        self.station = Some(station);
+        self.start(label, spec, cx);
+    }
+
+    fn start(&mut self, label: String, spec: SourceSpec, cx: &mut Context<Self>) {
+        self.now_playing = None;
+        self.pending = Some(label);
         self.track = None;
         self.error = None;
         self.position = Duration::ZERO;
@@ -120,6 +144,27 @@ impl Player {
 
     pub fn volume(&self) -> f32 {
         self.volume
+    }
+
+    /// Titre principal à afficher.
+    pub fn title(&self) -> Option<String> {
+        self.station
+            .as_ref()
+            .map(|s| s.name.clone())
+            .or_else(|| self.track.as_ref().map(|t| t.title.clone()))
+            .or_else(|| self.pending.clone())
+    }
+
+    /// La radio en cours, sous forme de station (pour l'ajouter aux favoris).
+    pub fn current_station(&self) -> Option<Station> {
+        if let Some(station) = &self.station {
+            return Some(station.clone());
+        }
+        let track = self.track.as_ref().filter(|t| t.live)?;
+        match &track.spec {
+            SourceSpec::Url(url) => Some(Station::manual(track.title.clone(), url.clone())),
+            SourceSpec::File(_) => None,
+        }
     }
 
     /// Y a-t-il quelque chose à lire ou à arrêter ?
