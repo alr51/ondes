@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::{
-    ActiveTheme, Disableable, Icon, Sizable, StyledExt,
+    ActiveTheme, Disableable, Icon, Selectable, Sizable, StyledExt,
     button::{Button, ButtonVariants},
     h_flex,
     slider::{Slider, SliderEvent, SliderState},
@@ -16,17 +16,22 @@ use gpui_kit::*;
 use ondes_audio::PlaybackState;
 
 use crate::player::Player;
+use crate::queue::Repeat;
 use crate::radio::FavoritesModel;
 use crate::radio_explore::toggle_favorite;
 
 pub struct PlayerBar {
     player: Entity<Player>,
     volume: Entity<SliderState>,
+    /// Progression, en fraction de la durée (0 à 1).
+    progress: Entity<SliderState>,
+    /// Position affichée pendant que l'utilisateur fait glisser la barre.
+    dragging: Option<Duration>,
     _subscriptions: Vec<Subscription>,
 }
 
 impl PlayerBar {
-    pub fn new(player: Entity<Player>, cx: &mut Context<Self>) -> Self {
+    pub fn new(player: Entity<Player>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let initial = player.read(cx).volume();
         let volume = cx.new(|_| {
             SliderState::new()
@@ -35,6 +40,7 @@ impl PlayerBar {
                 .step(0.01)
                 .default_value(initial)
         });
+        let progress = cx.new(|_| SliderState::new().min(0.).max(1.).step(0.001));
         let subscriptions = vec![
             cx.subscribe(&volume, |this, _, event: &SliderEvent, cx| {
                 if let SliderEvent::Change(value) = event {
@@ -42,14 +48,56 @@ impl PlayerBar {
                     this.player.update(cx, |p, cx| p.set_volume(v, cx));
                 }
             }),
-            cx.observe(&player, |_, _, cx| cx.notify()),
+            cx.subscribe(&progress, |this, _, event: &SliderEvent, cx| {
+                let Some(duration) = this.duration(cx) else {
+                    return;
+                };
+                match event {
+                    SliderEvent::Change(v) => {
+                        this.dragging = Some(duration.mul_f32(v.start().clamp(0., 1.)));
+                    }
+                    SliderEvent::Release(v) => {
+                        this.dragging = None;
+                        let pos = duration.mul_f32(v.start().clamp(0., 1.));
+                        this.player.update(cx, |p, cx| p.seek(pos, cx));
+                    }
+                }
+                cx.notify();
+            }),
+            cx.observe_in(&player, window, |this, player, window, cx| {
+                if this.dragging.is_none() {
+                    let p = player.read(cx);
+                    let fraction = match p.track.as_ref().and_then(|t| t.duration) {
+                        Some(d) if !d.is_zero() => {
+                            (p.position.as_secs_f32() / d.as_secs_f32()).clamp(0., 1.)
+                        }
+                        _ => 0.,
+                    };
+                    this.progress
+                        .update(cx, |s, cx| s.set_value(fraction, window, cx));
+                }
+                cx.notify();
+            }),
             cx.observe(&FavoritesModel::global(cx), |_, _, cx| cx.notify()),
         ];
         Self {
             player,
             volume,
+            progress,
+            dragging: None,
             _subscriptions: subscriptions,
         }
+    }
+
+    /// Durée du fichier en cours (pas de déplacement possible dans un direct).
+    fn duration(&self, cx: &App) -> Option<Duration> {
+        self.player
+            .read(cx)
+            .track
+            .as_ref()
+            .filter(|t| !t.live)
+            .and_then(|t| t.duration)
+            .filter(|d| !d.is_zero())
     }
 
     fn volume_icon(volume: f32) -> IconName {
@@ -64,8 +112,8 @@ impl PlayerBar {
 /// Sous-titre : état de la lecture, ou erreur.
 enum Status {
     Hint(String),
-    /// Titre en cours d'une radio.
-    NowPlaying(String),
+    /// Titre en cours d'une radio, ou artiste et album d'un morceau.
+    Info(String),
     Busy(String),
     Error(String),
 }
@@ -92,18 +140,17 @@ fn status(p: &Player) -> Status {
             } else {
                 ""
             };
+            if let Some(info) = p.track_subtitle() {
+                return Status::Info(format!("{paused}{info}"));
+            }
             match &p.track {
                 Some(t) if t.live => match &p.now_playing {
-                    Some(title) => Status::NowPlaying(format!("{paused}♪ {title}")),
+                    Some(title) => Status::Info(format!("{paused}♪ {title}")),
                     None => {
                         Status::Hint(format!("{paused}En direct · {}{format}", clock(p.position)))
                     }
                 },
-                Some(t) => Status::Hint(format!(
-                    "{paused}{} / {}{format}",
-                    clock(p.position),
-                    t.duration.map(clock).unwrap_or_else(|| "--:--".into())
-                )),
+                Some(_) => Status::Hint(format!("{paused}{}", format.trim_start_matches(" · "))),
                 None => Status::Hint(String::new()),
             }
         }
@@ -115,7 +162,7 @@ fn status(p: &Player) -> Status {
     }
 }
 
-fn clock(d: Duration) -> String {
+pub fn clock(d: Duration) -> String {
     let s = d.as_secs();
     if s >= 3600 {
         format!("{}:{:02}:{:02}", s / 3600, (s / 60) % 60, s % 60)
@@ -127,10 +174,12 @@ fn clock(d: Duration) -> String {
 impl Render for PlayerBar {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
+        let duration = self.duration(cx);
         let p = self.player.read(cx);
 
         let title = p.title().unwrap_or_else(|| "Aucune lecture".into());
         let station = p.current_station();
+        let cover = p.current_track().and_then(|t| t.cover.clone());
         let favorites = FavoritesModel::global(cx);
         let favorite = station
             .as_ref()
@@ -138,7 +187,12 @@ impl Render for PlayerBar {
         let live = p.track.as_ref().is_some_and(|t| t.live);
         let active = p.state.is_active();
         let has_source = p.has_source();
+        let has_queue = !p.queue.is_empty();
+        let has_next = p.queue.has_next();
+        let shuffle = p.queue.shuffle;
+        let repeat = p.repeat();
         let volume = p.volume();
+        let position = self.dragging.unwrap_or(p.position);
 
         let subtitle = match status(p) {
             Status::Hint(text) => div()
@@ -146,9 +200,10 @@ impl Render for PlayerBar {
                 .text_color(theme.muted_foreground)
                 .truncate()
                 .child(text),
-            Status::NowPlaying(text) => div()
+            Status::Info(text) => div()
                 .text_xs()
                 .text_color(theme.foreground)
+                .opacity(0.8)
                 .truncate()
                 .child(text),
             Status::Busy(text) => h_flex()
@@ -164,9 +219,144 @@ impl Render for PlayerBar {
                 .child(text),
         };
 
+        let fallback_color = theme.muted_foreground;
+        let artwork = div()
+            .flex()
+            .flex_shrink_0()
+            .items_center()
+            .justify_center()
+            .size_12()
+            .rounded(theme.radius)
+            .overflow_hidden()
+            .bg(theme.muted)
+            .text_color(theme.muted_foreground)
+            .child(match cover {
+                Some(path) => img(path)
+                    .size_full()
+                    .object_fit(ObjectFit::Cover)
+                    .with_fallback(move || {
+                        Icon::new(IconName::Music)
+                            .text_color(fallback_color)
+                            .into_any_element()
+                    })
+                    .into_any_element(),
+                None => Icon::new(if live {
+                    IconName::Radio
+                } else {
+                    IconName::Music
+                })
+                .into_any_element(),
+            });
+
+        let transport = h_flex()
+            .gap_1()
+            .items_center()
+            .justify_center()
+            .child(
+                Button::new("shuffle")
+                    .icon(IconName::Shuffle)
+                    .ghost()
+                    .small()
+                    .selected(shuffle)
+                    .disabled(!has_queue)
+                    .tooltip(if shuffle {
+                        "Aléatoire : activé"
+                    } else {
+                        "Aléatoire : désactivé"
+                    })
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.player.update(cx, |p, cx| p.toggle_shuffle(cx));
+                    })),
+            )
+            .child(
+                Button::new("prev")
+                    .icon(IconName::SkipBack)
+                    .ghost()
+                    .disabled(!has_queue)
+                    .tooltip("Précédent")
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.player.update(cx, |p, cx| p.prev(cx));
+                    })),
+            )
+            .child(
+                Button::new("stop")
+                    .icon(IconName::Square)
+                    .ghost()
+                    .disabled(!has_source)
+                    .tooltip("Arrêter")
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.player.update(cx, |p, cx| p.stop(cx));
+                    })),
+            )
+            .child(
+                Button::new("play-pause")
+                    .icon(if active {
+                        IconName::Pause
+                    } else {
+                        IconName::Play
+                    })
+                    .primary()
+                    .large()
+                    .disabled(!has_source)
+                    .tooltip(match (active, live) {
+                        (true, true) => "Couper le direct",
+                        (true, false) => "Pause",
+                        (false, _) => "Lecture",
+                    })
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.player.update(cx, |p, cx| p.toggle_play(cx));
+                    })),
+            )
+            .child(
+                Button::new("next")
+                    .icon(IconName::SkipForward)
+                    .ghost()
+                    .disabled(!has_next)
+                    .tooltip("Suivant")
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.player.update(cx, |p, cx| p.next(cx));
+                    })),
+            )
+            .child(
+                Button::new("repeat")
+                    .icon(if repeat == Repeat::One {
+                        IconName::Repeat1
+                    } else {
+                        IconName::Repeat
+                    })
+                    .ghost()
+                    .small()
+                    .selected(repeat != Repeat::Off)
+                    .disabled(!has_queue)
+                    .tooltip(match repeat {
+                        Repeat::Off => "Répéter : non",
+                        Repeat::All => "Répéter : toute la file",
+                        Repeat::One => "Répéter : ce morceau",
+                    })
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.player.update(cx, |p, cx| p.cycle_repeat(cx));
+                    })),
+            );
+
+        let timeline = duration.map(|duration| {
+            h_flex()
+                .w_full()
+                .gap_2()
+                .items_center()
+                .text_xs()
+                .text_color(theme.muted_foreground)
+                .child(div().w(px(40.)).text_right().child(clock(position)))
+                .child(
+                    div()
+                        .flex_1()
+                        .child(Slider::new(&self.progress).accessibility_label("Position")),
+                )
+                .child(div().w(px(40.)).child(clock(duration)))
+        });
+
         h_flex()
             .w_full()
-            .h(px(72.))
+            .h(px(80.))
             .flex_shrink_0()
             .px_4()
             .gap_4()
@@ -181,22 +371,7 @@ impl Render for PlayerBar {
                     .min_w_0()
                     .gap_3()
                     .items_center()
-                    .child(
-                        div()
-                            .flex()
-                            .flex_shrink_0()
-                            .items_center()
-                            .justify_center()
-                            .size_12()
-                            .rounded(theme.radius)
-                            .bg(theme.muted)
-                            .text_color(theme.muted_foreground)
-                            .child(if live {
-                                IconName::Radio
-                            } else {
-                                IconName::Music
-                            }),
-                    )
+                    .child(artwork)
                     .child(
                         v_flex()
                             .min_w_0()
@@ -225,54 +400,14 @@ impl Render for PlayerBar {
                         )
                     }),
             )
-            // Transport
+            // Transport + progression
             .child(
-                h_flex()
-                    .gap_2()
-                    .items_center()
-                    .child(
-                        Button::new("prev")
-                            .icon(IconName::SkipBack)
-                            .ghost()
-                            .disabled(true)
-                            .tooltip("Précédent (file d'attente : phase 3)"),
-                    )
-                    .child(
-                        Button::new("stop")
-                            .icon(IconName::Square)
-                            .ghost()
-                            .disabled(!has_source)
-                            .tooltip("Arrêter")
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.player.update(cx, |p, cx| p.stop(cx));
-                            })),
-                    )
-                    .child(
-                        Button::new("play-pause")
-                            .icon(if active {
-                                IconName::Pause
-                            } else {
-                                IconName::Play
-                            })
-                            .primary()
-                            .large()
-                            .disabled(!has_source)
-                            .tooltip(match (active, live) {
-                                (true, true) => "Couper le direct",
-                                (true, false) => "Pause",
-                                (false, _) => "Lecture",
-                            })
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.player.update(cx, |p, cx| p.toggle_play(cx));
-                            })),
-                    )
-                    .child(
-                        Button::new("next")
-                            .icon(IconName::SkipForward)
-                            .ghost()
-                            .disabled(true)
-                            .tooltip("Suivant (file d'attente : phase 3)"),
-                    ),
+                v_flex()
+                    .w(px(420.))
+                    .flex_shrink_0()
+                    .gap_1()
+                    .child(transport)
+                    .children(timeline),
             )
             // Volume
             .child(
@@ -288,7 +423,7 @@ impl Render for PlayerBar {
                     )
                     .child(
                         div()
-                            .w(px(120.))
+                            .w(px(110.))
                             .child(Slider::new(&self.volume).accessibility_label("Volume")),
                     )
                     .child(

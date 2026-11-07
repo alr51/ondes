@@ -1,7 +1,10 @@
+mod library;
+mod library_view;
 mod logos;
 mod paths;
 mod player;
 mod player_bar;
+mod queue;
 mod radio;
 mod radio_explore;
 mod radio_favorites;
@@ -37,6 +40,7 @@ fn main() -> anyhow::Result<()> {
             radio::Directory::init(cx);
             radio::FavoritesModel::init(cx);
             logos::Logos::init(cx);
+            library::LibraryModel::init(cx);
 
             cx.bind_keys([KeyBinding::new("ctrl-q", Quit, None)]);
             cx.on_action(|_: &Quit, cx| cx.quit());

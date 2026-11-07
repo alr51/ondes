@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::{
-    ActiveTheme, Icon, Sizable, StyledExt, Theme, ThemeMode,
+    ActiveTheme, Sizable, StyledExt, Theme, ThemeMode,
     button::{Button, ButtonVariants},
     h_flex,
     input::{Input, InputEvent, InputState},
@@ -15,6 +15,7 @@ use gpui_kit::*;
 
 use ondes_audio::SourceSpec;
 
+use crate::library_view::{GroupKind, LibraryFolders, LibraryGroups, LibraryTracks};
 use crate::player::Player;
 use crate::player_bar::PlayerBar;
 use crate::radio_explore::RadioExplore;
@@ -27,16 +28,34 @@ pub enum Page {
     RadioFavorites,
     LibraryTracks,
     LibraryAlbums,
+    LibraryArtists,
     LibraryFolders,
 }
 
 impl Page {
+    /// Aide au développement (builds debug) : `ONDES_PAGE=albums` ouvre
+    /// directement cette page, pour les captures d'écran automatisées.
+    fn from_env() -> Option<Self> {
+        if !cfg!(debug_assertions) {
+            return None;
+        }
+        Some(match std::env::var("ONDES_PAGE").ok()?.as_str() {
+            "favorites" => Page::RadioFavorites,
+            "tracks" => Page::LibraryTracks,
+            "albums" => Page::LibraryAlbums,
+            "artists" => Page::LibraryArtists,
+            "folders" => Page::LibraryFolders,
+            _ => Page::RadioExplore,
+        })
+    }
+
     fn title(self) -> &'static str {
         match self {
             Page::RadioExplore => "Explorer les radios",
             Page::RadioFavorites => "Radios favorites",
             Page::LibraryTracks => "Morceaux",
             Page::LibraryAlbums => "Albums",
+            Page::LibraryArtists => "Artistes",
             Page::LibraryFolders => "Dossiers",
         }
     }
@@ -47,16 +66,8 @@ impl Page {
             Page::RadioFavorites => IconName::Heart,
             Page::LibraryTracks => IconName::ListMusic,
             Page::LibraryAlbums => IconName::DiscAlbum,
+            Page::LibraryArtists => IconName::MicVocal,
             Page::LibraryFolders => IconName::FolderOpen,
-        }
-    }
-
-    fn placeholder(self) -> &'static str {
-        match self {
-            Page::RadioExplore | Page::RadioFavorites => "",
-            Page::LibraryTracks | Page::LibraryAlbums | Page::LibraryFolders => {
-                "La bibliothèque locale arrive en phase 3."
-            }
         }
     }
 }
@@ -77,6 +88,10 @@ pub struct Shell {
     player_bar: Entity<PlayerBar>,
     explore: Entity<RadioExplore>,
     favorites: Entity<RadioFavorites>,
+    tracks: Entity<LibraryTracks>,
+    albums: Entity<LibraryGroups>,
+    artists: Entity<LibraryGroups>,
+    folders: Entity<LibraryFolders>,
     /// Champ « URL ou chemin » de la barre d'ouverture rapide.
     location: Entity<InputState>,
     _subscriptions: Vec<Subscription>,
@@ -102,18 +117,27 @@ impl Shell {
         });
 
         let player = cx.new(|cx| Player::new(0.8, cx));
-        let player_bar = cx.new(|cx| PlayerBar::new(player.clone(), cx));
+        let player_bar = cx.new(|cx| PlayerBar::new(player.clone(), window, cx));
         let explore = cx.new(|cx| RadioExplore::new(player.clone(), window, cx));
         let favorites = cx.new(|cx| RadioFavorites::new(player.clone(), window, cx));
+        let tracks = cx.new(|cx| LibraryTracks::new(player.clone(), window, cx));
+        let albums = cx.new(|cx| LibraryGroups::new(GroupKind::Albums, player.clone(), window, cx));
+        let artists =
+            cx.new(|cx| LibraryGroups::new(GroupKind::Artists, player.clone(), window, cx));
+        let folders = cx.new(LibraryFolders::new);
 
         let shell = Self {
-            page: Page::RadioExplore,
+            page: Page::from_env().unwrap_or(Page::RadioExplore),
             follow_system_theme: true,
             rt_status: RtStatus::Checking,
             player,
             player_bar,
             explore,
             favorites,
+            tracks,
+            albums,
+            artists,
+            folders,
             location,
             _subscriptions: vec![appearance_sub, enter_sub],
         };
@@ -261,6 +285,7 @@ impl Shell {
                 SidebarGroup::new("Bibliothèque").child(SidebarMenu::new().children([
                     self.nav_item(Page::LibraryTracks, cx),
                     self.nav_item(Page::LibraryAlbums, cx),
+                    self.nav_item(Page::LibraryArtists, cx),
                     self.nav_item(Page::LibraryFolders, cx),
                 ])),
             )
@@ -314,7 +339,6 @@ impl Shell {
 
     fn render_content(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let quick_open = self.render_quick_open(cx);
-        let theme = cx.theme();
         v_flex()
             .flex_1()
             .h_full()
@@ -326,19 +350,10 @@ impl Shell {
             .child(match self.page {
                 Page::RadioExplore => self.explore.clone().into_any_element(),
                 Page::RadioFavorites => self.favorites.clone().into_any_element(),
-                _ => v_flex()
-                    .flex_1()
-                    .items_center()
-                    .justify_center()
-                    .gap_3()
-                    .rounded(theme.radius_lg)
-                    .border_1()
-                    .border_dashed()
-                    .border_color(theme.border)
-                    .text_color(theme.muted_foreground)
-                    .child(Icon::new(self.page.icon()).large())
-                    .child(div().text_sm().child(self.page.placeholder()))
-                    .into_any_element(),
+                Page::LibraryTracks => self.tracks.clone().into_any_element(),
+                Page::LibraryAlbums => self.albums.clone().into_any_element(),
+                Page::LibraryArtists => self.artists.clone().into_any_element(),
+                Page::LibraryFolders => self.folders.clone().into_any_element(),
             })
     }
 }

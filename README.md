@@ -33,8 +33,15 @@ appuyer sur Entrée, « Ouvrir un fichier… », ou glisser un fichier sur la fe
 - `crates/audio` : moteur audio (thread dédié, commandes / événements)
 - `crates/sources` : fichiers locaux, flux HTTP avec reconnexion, ICY, playlists
 - `crates/radio` : client Radio Browser, favoris SQLite, import de playlists
+- `crates/library` : bibliothèque locale (scan incrémental, tags, pochettes, recherche)
 
 ## Données
 
-- Favoris : `~/.local/share/ondes/ondes.db`
-- Cache des logos : `~/.cache/ondes/logos` (peut être supprimé sans risque)
+- Favoris et index de la bibliothèque : `~/.local/share/ondes/ondes.db`
+- Cache des logos et pochettes : `~/.cache/ondes/{logos,covers}` (peut être supprimé sans risque)
+
+## Développement
+
+En build debug, `ONDES_PAGE=tracks|albums|artists|folders|favorites` ouvre
+directement une page (captures d'écran automatisées). Avec
+`XDG_DATA_HOME` / `XDG_CACHE_HOME`, l'application utilise des données isolées.

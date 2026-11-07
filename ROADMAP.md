@@ -32,7 +32,7 @@ crates/
 ├── audio/     # moteur audio sur thread dédié
 ├── sources/   # fichiers locaux, flux HTTP, playlists
 ├── radio/     # Radio Browser, favoris (SQLite), import de playlists
-└── library/   # scanner, index SQLite, recherche       (phase 3)
+└── library/   # scan incrémental, tags, pochettes, index SQLite, recherche
 ```
 
 Principes :
@@ -88,12 +88,13 @@ Principes :
 - **Livrable** : parcourir, chercher et mettre en favori des milliers de stations.
 
 ### Phase 3 — Bibliothèque locale
-- [ ] Choix des dossiers, scan en arrière-plan avec progression
-- [ ] Tags et pochettes (`lofty`) indexés en SQLite
-- [ ] Recherche instantanée (FTS5 + `nucleo`)
-- [ ] Vues Morceaux / Albums / Artistes / Dossiers
-- [ ] Scan incrémental + surveillance `notify`
-- [ ] File d'attente, suivant/précédent, seek, aléatoire, répétition
+- [x] Choix des dossiers (dialogue, ou `~/Musique` proposé), scan en arrière-plan avec progression
+- [x] Tags (`lofty`) et pochettes (intégrées ou `cover.jpg`…, miniatures 300 px) indexés en SQLite
+- [x] Recherche instantanée **en mémoire** (tous les mots, sans accents ni casse) — FTS5 et nucleo se sont révélés inutiles : 50 000 morceaux tiennent en quelques Mo
+- [x] Vues Morceaux (tri par colonne) / Albums / Artistes (avec détail) / Dossiers
+- [x] Scan incrémental (date + taille) + surveillance `notify` (rescan 2 s après un changement)
+- [x] File d'attente, suivant/précédent, seek (barre de progression), aléatoire, répétition (tout / un)
+- [x] Lecture depuis les listes, enchaînement, seek, aléatoire/répétition, ajout/retrait de dossier — validés à la main
 - **Livrable** : bibliothèque musicale utilisable au quotidien.
 
 ### Phase 4 — Intégration système

@@ -5,8 +5,10 @@ use std::time::Duration;
 
 use gpui_kit::*;
 use ondes_audio::{AudioEngine, Command, Event, PlaybackState, SourceSpec, TrackInfo};
+use ondes_library::Track;
 use ondes_radio::Station;
 
+use crate::queue::{Queue, Repeat};
 use crate::radio::Directory;
 use crate::runtime::Rt;
 
@@ -23,6 +25,8 @@ pub struct Player {
     pub position: Duration,
     pub error: Option<String>,
     pub reconnecting: Option<u32>,
+    /// File d'attente des morceaux de la bibliothèque.
+    pub queue: Queue,
     volume: f32,
     _events: Task<()>,
 }
@@ -45,7 +49,7 @@ impl Player {
                     while let Ok(event) = events.recv_async().await {
                         if this
                             .update(cx, |this, cx| {
-                                this.apply(event);
+                                this.apply(event, cx);
                                 cx.notify();
                             })
                             .is_err()
@@ -68,13 +72,20 @@ impl Player {
             position: Duration::ZERO,
             error,
             reconnecting: None,
+            queue: Queue::default(),
             volume,
             _events: events_task,
         }
     }
 
-    fn apply(&mut self, event: Event) {
+    fn apply(&mut self, event: Event, cx: &mut Context<Self>) {
         match event {
+            Event::State(PlaybackState::Ended) if !self.queue.is_empty() => {
+                self.state = PlaybackState::Ended;
+                if self.queue.next(true).is_some() {
+                    self.play_current(cx);
+                }
+            }
             Event::State(state) => {
                 self.state = state;
                 match state {
@@ -107,6 +118,7 @@ impl Player {
 
     pub fn load(&mut self, spec: SourceSpec, cx: &mut Context<Self>) {
         self.station = None;
+        self.queue.clear();
         self.start(spec.label(), spec, cx);
     }
 
@@ -115,6 +127,7 @@ impl Player {
         let spec = SourceSpec::Url(station.url.clone());
         let label = station.name.clone();
         self.station = Some(station);
+        self.queue.clear();
         self.start(label, spec, cx);
     }
 
@@ -126,6 +139,60 @@ impl Player {
         self.position = Duration::ZERO;
         self.send(Command::Load(spec));
         cx.notify();
+    }
+
+    /// Joue `tracks` (la liste visible) à partir de `start`.
+    pub fn play_tracks(&mut self, tracks: Vec<Track>, start: usize, cx: &mut Context<Self>) {
+        self.queue.set(tracks, start);
+        self.play_current(cx);
+    }
+
+    fn play_current(&mut self, cx: &mut Context<Self>) {
+        let Some(track) = self.queue.current().cloned() else {
+            return;
+        };
+        self.station = None;
+        self.start(track.title.clone(), SourceSpec::File(track.path), cx);
+    }
+
+    pub fn next(&mut self, cx: &mut Context<Self>) {
+        if self.queue.next(false).is_some() {
+            self.play_current(cx);
+        }
+    }
+
+    /// Au-delà de 3 s, « précédent » revient au début du morceau.
+    pub fn prev(&mut self, cx: &mut Context<Self>) {
+        if self.position > Duration::from_secs(3) {
+            self.seek(Duration::ZERO, cx);
+        } else if self.queue.prev().is_some() {
+            self.play_current(cx);
+        }
+    }
+
+    pub fn seek(&mut self, pos: Duration, cx: &mut Context<Self>) {
+        self.position = pos;
+        self.send(Command::Seek(pos));
+        cx.notify();
+    }
+
+    pub fn toggle_shuffle(&mut self, cx: &mut Context<Self>) {
+        self.queue.set_shuffle(!self.queue.shuffle);
+        cx.notify();
+    }
+
+    pub fn cycle_repeat(&mut self, cx: &mut Context<Self>) {
+        self.queue.repeat = self.queue.repeat.cycle();
+        cx.notify();
+    }
+
+    pub fn repeat(&self) -> Repeat {
+        self.queue.repeat
+    }
+
+    /// Morceau de la bibliothèque en cours.
+    pub fn current_track(&self) -> Option<&Track> {
+        self.queue.current()
     }
 
     pub fn toggle_play(&mut self, _: &mut Context<Self>) {
@@ -148,9 +215,9 @@ impl Player {
 
     /// Titre principal à afficher.
     pub fn title(&self) -> Option<String> {
-        self.station
-            .as_ref()
-            .map(|s| s.name.clone())
+        self.current_track()
+            .map(|t| t.title.clone())
+            .or_else(|| self.station.as_ref().map(|s| s.name.clone()))
             .or_else(|| self.track.as_ref().map(|t| t.title.clone()))
             .or_else(|| self.pending.clone())
     }
@@ -165,6 +232,16 @@ impl Player {
             SourceSpec::Url(url) => Some(Station::manual(track.title.clone(), url.clone())),
             SourceSpec::File(_) => None,
         }
+    }
+
+    /// « Artiste — Album » du morceau de la bibliothèque en cours.
+    pub fn track_subtitle(&self) -> Option<String> {
+        let t = self.current_track()?;
+        let parts: Vec<&str> = [t.artist.as_deref(), t.album.as_deref()]
+            .into_iter()
+            .flatten()
+            .collect();
+        (!parts.is_empty()).then(|| parts.join(" — "))
     }
 
     /// Y a-t-il quelque chose à lire ou à arrêter ?

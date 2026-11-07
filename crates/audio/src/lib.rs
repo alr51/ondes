@@ -31,6 +31,8 @@ pub enum Command {
     Stop,
     /// Volume entre 0 et 1 (échelle perceptive appliquée par le moteur).
     SetVolume(f32),
+    /// Se place à cette position (fichiers seulement ; ignoré pour un direct).
+    Seek(Duration),
 }
 
 /// État de lecture.

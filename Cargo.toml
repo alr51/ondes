@@ -14,6 +14,7 @@ ondes-core = { path = "crates/core" }
 ondes-audio = { path = "crates/audio" }
 ondes-sources = { path = "crates/sources" }
 ondes-radio = { path = "crates/radio" }
+ondes-library = { path = "crates/library" }
 # GPUI Kit embarque GPUI (`gpui-pre`) : version exacte, ne jamais ajouter `gpui` séparément.
 gpui-kit = "=0.9.0"
 tokio = { version = "1.54", features = ["rt-multi-thread", "time", "sync", "macros"] }
@@ -31,6 +32,11 @@ directories = "6"
 # Déjà dans l'arbre via GPUI : réduction des logos avant mise en cache.
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "ico", "bmp"] }
 sha2 = "0.10"
+lofty = "0.25"
+rayon = "1.12"
+walkdir = "2"
+notify = "8"
+fastrand = "2"
 reqwest = { version = "0.13", default-features = false, features = ["stream", "rustls", "http2", "charset", "json", "query"] }
 # Décodage via symphonia (MP3, AAC/MP4, FLAC, Vorbis, WAV) ; sortie via cpal.
 rodio = { version = "0.23", default-features = false, features = ["playback", "mp3", "mp4", "flac", "vorbis", "wav"] }

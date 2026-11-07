@@ -68,7 +68,8 @@ pub struct Prepared {
 
 /// Construit le décodeur (bloquant : lit l'en-tête du flux), puis lance le
 /// thread de décodage. À appeler hors du thread audio.
-pub fn prepare(opened: Opened, config: BufferConfig) -> Result<Prepared, String> {
+/// `start` : position de départ (0 = début), pour se déplacer dans un fichier.
+pub fn prepare(opened: Opened, config: BufferConfig, start: Duration) -> Result<Prepared, String> {
     let Opened {
         reader,
         hint,
@@ -98,6 +99,13 @@ pub fn prepare(opened: Opened, config: BufferConfig) -> Result<Prepared, String>
         other => format!("décodage impossible : {other}"),
     })?;
 
+    let mut decoder = decoder;
+    if !start.is_zero() && !live {
+        // Échec possible sur certains formats : on repart alors du début.
+        if let Err(e) = decoder.try_seek(start) {
+            tracing::warn!(error = %e, "déplacement impossible");
+        }
+    }
     let channels = decoder.channels();
     let sample_rate = decoder.sample_rate();
     let duration = if live { None } else { decoder.total_duration() };
@@ -353,7 +361,7 @@ mod tests {
             mime: None,
             live: false,
         };
-        let prepared = prepare(opened, BufferConfig::for_source(false)).unwrap();
+        let prepared = prepare(opened, BufferConfig::for_source(false), Duration::ZERO).unwrap();
         assert_eq!(prepared.channels, 1);
         assert_eq!(prepared.sample_rate, 8_000);
         let d = prepared.duration.unwrap().as_millis();
@@ -379,6 +387,6 @@ mod tests {
             byte_len: Some(4096),
             live: false,
         };
-        assert!(prepare(opened, BufferConfig::for_source(false)).is_err());
+        assert!(prepare(opened, BufferConfig::for_source(false), Duration::ZERO).is_err());
     }
 }

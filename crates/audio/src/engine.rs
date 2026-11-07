@@ -94,6 +94,7 @@ impl AudioEngine {
                     last_spec: None,
                     last_pos_secs: None,
                     titles: VecDeque::new(),
+                    seek: None,
                     early_title: None,
                 }
                 .run(rx);
@@ -128,6 +129,15 @@ struct Current {
     player: Player,
     shared: Arc<Shared>,
     info: TrackInfo,
+    /// Position de départ (après un déplacement) : `get_pos` repart de zéro.
+    offset: Duration,
+}
+
+/// Déplacement en cours : la source est rouverte à `pos`.
+struct SeekTarget {
+    pos: Duration,
+    paused: bool,
+    info: TrackInfo,
 }
 
 struct Engine {
@@ -147,6 +157,7 @@ struct Engine {
     last_pos_secs: Option<u64>,
     /// Titres ICY reçus, à annoncer quand l'audio correspondant sera joué.
     titles: VecDeque<(Instant, String)>,
+    seek: Option<SeekTarget>,
     /// Titre reçu avant la fin du chargement : annoncé avec la piste.
     early_title: Option<String>,
 }
@@ -191,6 +202,7 @@ impl Engine {
         self.last_pos_secs = None;
         self.titles.clear();
         self.early_title = None;
+        self.seek = None;
     }
 
     fn command(&mut self, cmd: Command) {
@@ -210,6 +222,7 @@ impl Engine {
                 self.drop_current();
                 self.set_state(PlaybackState::Idle);
             }
+            Command::Seek(pos) => self.seek_to(pos),
             Command::SetVolume(v) => {
                 self.volume = v.clamp(0.0, 1.0);
                 if let Some(cur) = &self.current {
@@ -259,14 +272,38 @@ impl Engine {
         self.drop_current();
         self.last_spec = Some(spec.clone());
         self.set_state(PlaybackState::Loading);
+        self.spawn_loader(spec, Duration::ZERO);
+    }
 
+    /// Rouvre la source en cours à `pos`, en gardant l'état pause.
+    fn seek_to(&mut self, pos: Duration) {
+        let Some(cur) = &self.current else {
+            return;
+        };
+        if cur.info.live {
+            return;
+        }
+        let pos = cur.info.duration.map_or(pos, |d| pos.min(d));
+        let target = SeekTarget {
+            pos,
+            paused: self.state == PlaybackState::Paused,
+            info: cur.info.clone(),
+        };
+        let spec = target.info.spec.clone();
+        self.drop_current();
+        self.seek = Some(target);
+        self.emit(Event::Position(pos));
+        self.spawn_loader(spec, pos);
+    }
+
+    fn spawn_loader(&mut self, spec: SourceSpec, start: Duration) {
         let generation = self.generation;
         let tx = self.tx.clone();
         let rt = self.rt.clone();
         let spawned = std::thread::Builder::new()
             .name("ondes-load".into())
             .spawn(move || {
-                let result = open_and_prepare(&spec, &rt, generation, &tx).map(Box::new);
+                let result = open_and_prepare(&spec, &rt, generation, &tx, start).map(Box::new);
                 if let Err(e) = &result {
                     tracing::warn!(?spec, error = %e, "échec d'ouverture");
                 }
@@ -285,16 +322,32 @@ impl Engine {
                 let player = Player::connect_new(&self.mixer);
                 player.set_volume(perceptual(self.volume));
                 player.append(prepared.source);
-                self.emit(Event::Track(info.clone()));
-                if let Some(title) = self.early_title.take() {
-                    self.emit(Event::NowPlaying(title));
+                // Après un déplacement : même piste, on ne la réannonce pas.
+                let (offset, paused) = match self.seek.take() {
+                    Some(seek) => (seek.pos, seek.paused),
+                    None => {
+                        self.emit(Event::Track(info.clone()));
+                        if let Some(title) = self.early_title.take() {
+                            self.emit(Event::NowPlaying(title));
+                        }
+                        (Duration::ZERO, false)
+                    }
+                };
+                if paused {
+                    player.pause();
                 }
                 self.current = Some(Current {
                     player,
                     shared: prepared.shared,
                     info,
+                    offset,
                 });
-                self.set_state(PlaybackState::Buffering);
+                self.last_pos_secs = None;
+                self.set_state(if paused {
+                    PlaybackState::Paused
+                } else {
+                    PlaybackState::Buffering
+                });
             }
             Err(message) => {
                 self.set_state(PlaybackState::Idle);
@@ -354,7 +407,7 @@ impl Engine {
         let Some(cur) = &self.current else {
             return;
         };
-        let pos = cur.player.get_pos();
+        let pos = cur.offset + cur.player.get_pos();
         self.set_state(state);
         if self.last_pos_secs != Some(pos.as_secs()) {
             self.last_pos_secs = Some(pos.as_secs());
@@ -368,6 +421,7 @@ fn open_and_prepare(
     rt: &Handle,
     generation: u64,
     tx: &flume::Sender<Msg>,
+    start: Duration,
 ) -> Result<(Prepared, TrackInfo), String> {
     let opened = match spec {
         SourceSpec::File(path) => open_file(path),
@@ -383,7 +437,7 @@ fn open_and_prepare(
     let title = opened.title.clone();
     let live = opened.live;
     let format = opened.hint.clone().or_else(|| opened.mime.clone());
-    let prepared = prepare(opened, BufferConfig::for_source(live))?;
+    let prepared = prepare(opened, BufferConfig::for_source(live), start)?;
     let info = TrackInfo {
         spec: spec.clone(),
         title,
@@ -484,6 +538,44 @@ mod tests {
         wait_for(&events, |e| *e == Event::State(PlaybackState::Paused));
         engine.send(Command::Stop);
         wait_for(&events, |e| *e == Event::State(PlaybackState::Idle));
+
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn seeks_and_keeps_pause_state() {
+        let path = wav_file(16_000, 8_000); // 2 s
+        let (engine, _rt, stop) = engine();
+        let events = engine.events();
+        engine.send(Command::Load(SourceSpec::File(path.clone())));
+        wait_for(&events, |e| *e == Event::State(PlaybackState::Playing));
+
+        engine.send(Command::Pause);
+        wait_for(&events, |e| *e == Event::State(PlaybackState::Paused));
+        engine.send(Command::Seek(Duration::from_millis(1_500)));
+        let seen = wait_for(&events, |e| {
+            *e == Event::Position(Duration::from_millis(1_500))
+        });
+        // Pas de nouvelle piste annoncée pour un simple déplacement.
+        assert!(!seen.iter().any(|e| matches!(e, Event::Track(_))));
+        std::thread::sleep(Duration::from_millis(300));
+        assert!(
+            !events
+                .try_iter()
+                .any(|e| e == Event::State(PlaybackState::Playing)),
+            "doit rester en pause"
+        );
+
+        // Reprise : il ne reste que 0,5 s à jouer.
+        let start = Instant::now();
+        engine.send(Command::Play);
+        wait_for(&events, |e| *e == Event::State(PlaybackState::Ended));
+        assert!(
+            start.elapsed() < Duration::from_millis(1_400),
+            "{:?}",
+            start.elapsed()
+        );
 
         stop.store(true, std::sync::atomic::Ordering::Relaxed);
         std::fs::remove_file(path).ok();
