@@ -17,7 +17,7 @@ jobs:
         include:
           - os: ubuntu-24.04
             formats: deb,appimage
-          - os: macos-14
+          - os: macos-latest
             formats: dmg
           - os: windows-latest
             formats: nsis
