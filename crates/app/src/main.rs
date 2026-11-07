@@ -1,3 +1,4 @@
+mod player;
 mod player_bar;
 mod runtime;
 mod shell;
@@ -16,6 +17,10 @@ fn main() -> anyhow::Result<()> {
         .init();
 
     let rt = runtime::Rt::start()?;
+    // `ondes <url|fichier>` : lecture immédiate (utile pour « Ouvrir avec »).
+    let initial = std::env::args()
+        .nth(1)
+        .and_then(|arg| ondes_audio::SourceSpec::parse(&arg));
 
     // `AllAssets` : catalogue Lucide complet (radio, musique, volume…).
     gpui_kit::application()
@@ -45,7 +50,7 @@ fn main() -> anyhow::Result<()> {
             };
 
             if let Err(err) = gpui_kit::open_window(options, cx, |window, cx| {
-                cx.new(|cx| shell::Shell::new(window, cx))
+                cx.new(|cx| shell::Shell::new(initial, window, cx))
             }) {
                 tracing::error!("impossible d'ouvrir la fenêtre : {err:#}");
                 cx.quit();

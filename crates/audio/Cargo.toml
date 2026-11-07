@@ -1,0 +1,18 @@
+[package]
+name = "ondes-audio"
+description = "Moteur audio d'Ondes (thread dédié)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+ondes-sources.workspace = true
+rodio.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+flume.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true

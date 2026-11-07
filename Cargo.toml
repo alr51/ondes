@@ -11,12 +11,21 @@ license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 ondes-core = { path = "crates/core" }
+ondes-audio = { path = "crates/audio" }
+ondes-sources = { path = "crates/sources" }
 # GPUI Kit embarque GPUI (`gpui-pre`) : version exacte, ne jamais ajouter `gpui` séparément.
 gpui-kit = "=0.9.0"
 tokio = { version = "1.54", features = ["rt-multi-thread", "time", "sync", "macros"] }
 anyhow = "1"
 thiserror = "2"
 tracing = "0.1"
+flume = "0.12"
+url = "2.5"
+bytes = "1"
+futures-util = "0.3"
+reqwest = { version = "0.13", default-features = false, features = ["stream", "rustls", "http2", "charset"] }
+# Décodage via symphonia (MP3, AAC/MP4, FLAC, Vorbis, WAV) ; sortie via cpal.
+rodio = { version = "0.23", default-features = false, features = ["playback", "mp3", "mp4", "flac", "vorbis", "wav"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [workspace.lints.clippy]

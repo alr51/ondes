@@ -17,12 +17,18 @@ La toolchain Rust (1.95) est fixée par `rust-toolchain.toml`.
 ## Lancer
 
 ```sh
-cargo run            # RUST_LOG=ondes=debug pour plus de logs
+cargo run                                   # RUST_LOG=ondes_audio=debug pour suivre le moteur
+cargo run -- https://icecast.radiofrance.fr/fip-midfi.mp3
+cargo run -- ~/Musique/morceau.flac
 ```
 
-Raccourci : `Ctrl+Q` pour quitter.
+Dans l'application : coller une URL (flux mp3/aac/ogg, `.pls`, `.m3u`) et
+appuyer sur Entrée, « Ouvrir un fichier… », ou glisser un fichier sur la fenêtre.
+`Ctrl+Q` pour quitter.
 
 ## Structure
 
 - `crates/app` : binaire GPUI (fenêtre, vues)
 - `crates/core` : types partagés et pont tokio ↔ GPUI
+- `crates/audio` : moteur audio (thread dédié, commandes / événements)
+- `crates/sources` : fichiers locaux, flux HTTP avec reconnexion, playlists

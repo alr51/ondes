@@ -29,8 +29,8 @@ Stack : Rust, [GPUI](https://www.gpui.rs/) et [GPUI Kit](https://gpui-kit.com/) 
 crates/
 ├── app/       # binaire GPUI : fenêtres, vues, thème
 ├── core/      # types partagés, pont tokio, commandes/événements, config
-├── audio/     # moteur audio sur thread dédié          (phase 1)
-├── sources/   # trait Source : HttpStream, LocalFile   (phase 1)
+├── audio/     # moteur audio sur thread dédié
+├── sources/   # fichiers locaux, flux HTTP, playlists
 ├── radio/     # Radio Browser, favoris, M3U/PLS        (phase 2)
 └── library/   # scanner, index SQLite, recherche       (phase 3)
 ```
@@ -67,10 +67,13 @@ Principes :
 - **Livrable** : app vide qui s'ouvre, thème clair/sombre.
 
 ### Phase 1 — MVP lecteur
-- [ ] Moteur audio (play/pause/stop/volume) sur thread dédié
-- [ ] Lecture d'un fichier local (boîte de dialogue)
-- [ ] Lecture d'une URL de flux HTTP (MP3/AAC), mise en tampon, reconnexion simple
-- [ ] Barre de lecture branchée : titre, play/pause, volume, état de mise en tampon
+- [x] Moteur audio (play/pause/stop/volume) sur thread dédié — `ondes-audio` (rodio 0.23 / symphonia)
+- [x] Décodage sur thread séparé + file d'échantillons : la sortie ne bloque jamais (silence + « mise en tampon »)
+- [x] Lecture d'un fichier local : boîte de dialogue, glisser-déposer, `ondes <fichier>`
+- [x] Lecture d'une URL de flux HTTP (MP3/AAC/OGG), prébuffer 2 s, reconnexion automatique (5 essais)
+- [x] Résolution des URL `.pls` / `.m3u` vers le flux (HLS refusé proprement)
+- [x] Barre de lecture branchée : titre, état, position/durée, stop, play/pause, volume
+- [x] Pause/reprise d'un direct, boîte de dialogue fichier (portail XDG) — validés à la main
 - **Livrable** : on colle une URL de radio ou on ouvre un fichier, et ça joue.
 
 ### Phase 2 — Webradios
@@ -113,5 +116,6 @@ Principes :
 ## Risques
 1. **GPUI et GPUI Kit évoluent vite** (0.6 → 0.9 en peu de temps) : versions fixées avec `=`, montées de version groupées.
 2. **Flux radio hétérogènes** (redirections, ICY, HE-AAC, coupures) : garder un jeu de 20 à 30 URL de test.
-3. **Linux** : GPU compatible Vulkan requis ; audio via ALSA/PipeWire/PulseAudio (cpal). Tester tôt sur plusieurs machines.
-4. **Grosses bibliothèques** (50 000+ morceaux) : listes virtualisées, pochettes asynchrones, indexation par lots.
+3. **AAC** : symphonia ne décode que l'AAC-LC ; les flux HE-AAC (aacp) sont lus sans SBR (son plus terne). Piste : `fdk-aac` ou ffmpeg en option.
+4. **Linux** : GPU compatible Vulkan requis ; audio via ALSA/PipeWire/PulseAudio (cpal). Tester tôt sur plusieurs machines.
+5. **Grosses bibliothèques** (50 000+ morceaux) : listes virtualisées, pochettes asynchrones, indexation par lots.

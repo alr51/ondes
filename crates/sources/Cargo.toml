@@ -1,0 +1,23 @@
+[package]
+name = "ondes-sources"
+description = "Sources audio d'Ondes : fichiers locaux et flux HTTP"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+tokio.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+flume.workspace = true
+reqwest.workspace = true
+futures-util.workspace = true
+url.workspace = true
+bytes.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["net", "io-util"] }
+
+[lints]
+workspace = true

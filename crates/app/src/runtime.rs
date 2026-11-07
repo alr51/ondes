@@ -28,4 +28,9 @@ impl Rt {
     {
         cx.global::<Rt>().0.spawn(fut)
     }
+
+    /// Handle tokio, pour les crates qui ouvrent des connexions elles-mêmes.
+    pub fn handle(cx: &App) -> tokio::runtime::Handle {
+        cx.global::<Rt>().0.handle()
+    }
 }
