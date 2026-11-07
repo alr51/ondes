@@ -1,3 +1,6 @@
+// Pas de fenêtre console sous Windows (sauf en debug, pour voir les journaux).
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 mod about;
 mod actions;
 mod library;

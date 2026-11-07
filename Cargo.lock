@@ -4726,6 +4726,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "directories",
+ "embed-resource",
  "fastrand",
  "flume",
  "gpui-kit",

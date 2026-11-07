@@ -1,8 +1,11 @@
-name: Release
+name: Paquets
 
-# Publie les paquets quand une étiquette `v*` est poussée (ex. `git tag v0.1.0 && git push --tags`).
+# Construit les paquets à chaque push sur main (artefacts téléchargeables
+# depuis l'onglet Actions, pour tester avant de publier) et les publie dans
+# une release GitHub quand une étiquette `v*` est poussée.
 on:
   push:
+    branches: [main]
     tags: ["v*"]
   workflow_dispatch:
 

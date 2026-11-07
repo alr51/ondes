@@ -1,0 +1,5 @@
+// Ressources de ondes.exe : manifeste (requis par GPUI : Common Controls v6,
+// DPI par écran) et icône de l'application.
+#define RT_MANIFEST 24
+1 RT_MANIFEST "ondes.manifest.xml"
+1 ICON "ondes.ico"
