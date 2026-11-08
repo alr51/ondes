@@ -7,6 +7,8 @@ automatiquement). Avant de publier une version, renommer la section
 
 ## [Non publié]
 
+## [0.5.0] — 2026-11-08
+
 ### Vue compacte
 Une petite fenêtre du lecteur, pour écouter sans la fenêtre principale : bouton à côté du volume dans la barre de lecture, palette de commandes ou **Ctrl+Maj+M**. La fenêtre principale est réduite et revient quand la vue compacte est fermée.
 
