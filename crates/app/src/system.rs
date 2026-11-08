@@ -221,7 +221,8 @@ impl System {
 #[cfg(target_os = "windows")]
 fn hwnd(window: &Window) -> Option<*mut std::ffi::c_void> {
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-    match window.window_handle().map(|h| h.as_raw()) {
+    // Syntaxe explicite : `Window` a aussi une méthode `window_handle` à lui.
+    match HasWindowHandle::window_handle(window).map(|h| h.as_raw()) {
         Ok(RawWindowHandle::Win32(h)) => Some(h.hwnd.get() as *mut std::ffi::c_void),
         _ => None,
     }
