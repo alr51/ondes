@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ondes — webradios et musique locale</title>
+<meta name="description" content="Ondes : une application de bureau libre et légère pour écouter des milliers de webradios et ta bibliothèque musicale. Linux, Windows et macOS.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#14110f" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#faf7f2" media="(prefers-color-scheme: light)">
+<meta property="og:title" content="Ondes — webradios et musique locale">
+<meta property="og:description" content="Des milliers de webradios et ta musique, dans une application de bureau libre, rapide et légère.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://alr51.github.io/ondes/">
+<meta property="og:image" content="https://alr51.github.io/ondes/images/explore-dark.webp">
+<link rel="icon" href="images/ondes.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="images/ondes-256.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #faf7f2;
+    --bg-alt: #f2ece3;
+    --surface: #ffffff;
+    --text: #1d1916;
+    --muted: #6b625a;
+    --line: #e4dbcf;
+    --accent: #e0592a;
+    --accent-2: #c2185b;
+    --accent-ink: #ffffff;
+    --wave: rgba(224, 89, 42, 0.16);
+    --shadow: 0 30px 80px -30px rgba(70, 35, 10, 0.35), 0 8px 24px -12px rgba(70, 35, 10, 0.18);
+    --radius: 18px;
+    --display: "Bricolage Grotesque", system-ui, sans-serif;
+    --body: "Figtree", system-ui, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14110f;
+      --bg-alt: #1c1815;
+      --surface: #221d19;
+      --text: #f4ede4;
+      --muted: #a89d92;
+      --line: #342c26;
+      --accent: #ff8a3d;
+      --accent-2: #e2457e;
+      --accent-ink: #1a0d05;
+      --wave: rgba(255, 138, 61, 0.14);
+      --shadow: 0 30px 90px -30px rgba(0, 0, 0, 0.8), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14110f;
+    --bg-alt: #1c1815;
+    --surface: #221d19;
+    --text: #f4ede4;
+    --muted: #a89d92;
+    --line: #342c26;
+    --accent: #ff8a3d;
+    --accent-2: #e2457e;
+    --accent-ink: #1a0d05;
+    --wave: rgba(255, 138, 61, 0.14);
+    --shadow: 0 30px 90px -30px rgba(0, 0, 0, 0.8), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 400 17px/1.6 var(--body);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  img { max-width: 100%; display: block; }
+  a { color: inherit; }
+  .wrap { width: min(1120px, 100% - 32px); margin-inline: auto; }
+
+  /* En-tête */
+  header.top {
+    position: sticky; top: 0; z-index: 10;
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    backdrop-filter: blur(14px);
+    border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+  }
+  header.top .wrap { display: flex; align-items: center; gap: 16px; height: 64px; }
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font: 700 20px var(--display); letter-spacing: -0.01em; }
+  .brand img { width: 32px; height: 32px; }
+  header nav { margin-left: auto; display: flex; gap: 22px; align-items: center; font-size: 15px; }
+  header nav a { text-decoration: none; color: var(--muted); }
+  header nav a:hover { color: var(--text); }
+  .gh { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border: 1px solid var(--line); border-radius: 999px; color: var(--text) !important; }
+  .gh svg { width: 17px; height: 17px; }
+  @media (max-width: 640px) { header nav .hide-sm { display: none; } }
+
+  /* Accroche */
+  .hero { position: relative; padding: 88px 0 0; text-align: center; isolation: isolate; }
+  .waves { position: absolute; inset: -120px 0 auto; height: 900px; z-index: -1; pointer-events: none; overflow: hidden; }
+  .waves svg { position: absolute; left: 50%; top: 0; width: 1600px; transform: translateX(-50%); }
+  .waves circle { fill: none; stroke: var(--wave); stroke-width: 1.5; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 10px;
+    font: 500 13px var(--mono); letter-spacing: 0.02em; color: var(--muted);
+    padding: 6px 14px 6px 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface);
+    text-decoration: none;
+  }
+  .eyebrow .dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 0 4px rgba(34,197,94,.18); margin-left: 4px; }
+  .eyebrow:hover { color: var(--text); }
+  h1 {
+    font: 800 clamp(48px, 9vw, 104px)/0.95 var(--display);
+    letter-spacing: -0.022em;
+    margin: 26px 0 0;
+  }
+  h1 .grad {
+    background: linear-gradient(100deg, var(--accent) 10%, var(--accent-2) 90%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .lede { font-size: clamp(18px, 2.2vw, 21px); color: var(--muted); max-width: 620px; margin: 24px auto 0; }
+  .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 36px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 10px; justify-content: center;
+    padding: 14px 24px; border-radius: 12px; font: 600 16px var(--body); text-decoration: none;
+    border: 1px solid var(--line); background: var(--surface); color: var(--text);
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .btn:hover { transform: translateY(-1px); }
+  .btn svg { width: 18px; height: 18px; flex: none; }
+  .btn.primary {
+    border-color: transparent; color: #fff;
+    background: linear-gradient(100deg, #ff8a3d, #c2185b);
+    box-shadow: 0 12px 30px -12px rgba(194, 24, 91, 0.6);
+  }
+  .meta { margin-top: 14px; font-size: 14px; color: var(--muted); }
+  .meta a { color: var(--muted); }
+
+  .shot-hero { margin: 64px auto 0; width: min(1120px, 100% - 32px); }
+  .shot-hero img, .gallery img {
+    width: 100%; height: auto; border-radius: 14px;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--line);
+  }
+
+  /* Sections */
+  section { padding: 112px 0 0; }
+  .kicker { font: 500 13px var(--mono); color: var(--accent); letter-spacing: 0.06em; text-transform: uppercase; }
+  h2 { font: 700 clamp(32px, 4.6vw, 48px)/1.05 var(--display); letter-spacing: -0.025em; margin: 12px 0 0; max-width: 22ch; }
+  .section-lede { color: var(--muted); max-width: 600px; margin: 16px 0 0; }
+
+  .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 48px; }
+  @media (max-width: 900px) { .features { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 600px) { .features { grid-template-columns: 1fr; } }
+  .feature {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 26px 24px 24px;
+  }
+  .feature .ic {
+    width: 42px; height: 42px; border-radius: 11px; display: grid; place-items: center;
+    background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent);
+  }
+  .feature .ic svg { width: 22px; height: 22px; }
+  .feature h3 { font: 700 20px/1.25 var(--display); margin: 18px 0 8px; letter-spacing: -0.01em; }
+  .feature p { margin: 0; color: var(--muted); font-size: 15.5px; }
+
+  .gallery { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 48px; }
+  .gallery figure { margin: 0; }
+  .gallery figcaption { color: var(--muted); font-size: 14.5px; margin-top: 14px; }
+  @media (max-width: 760px) { .gallery { grid-template-columns: 1fr; } }
+
+  /* Téléchargement */
+  .downloads { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 44px; }
+  @media (max-width: 960px) { .downloads { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 520px) { .downloads { grid-template-columns: 1fr; } }
+  .dl {
+    display: flex; flex-direction: column; gap: 4px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 22px; text-decoration: none; position: relative;
+    transition: border-color .15s ease, transform .15s ease;
+  }
+  .dl:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .dl.mine { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+  .dl .os { font: 700 19px var(--display); }
+  .dl .fmt { color: var(--muted); font-size: 14.5px; }
+  .dl .file { font: 500 12.5px var(--mono); color: var(--muted); margin-top: 14px; overflow-wrap: anywhere; }
+  .dl .tag { position: absolute; top: 16px; right: 16px; font: 500 11px var(--mono); padding: 3px 8px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); display: none; }
+  .dl.mine .tag { display: block; }
+  .note { color: var(--muted); font-size: 14.5px; margin-top: 18px; }
+  pre {
+    margin: 22px 0 0; padding: 16px 18px; border-radius: 12px; overflow-x: auto;
+    background: var(--bg-alt); border: 1px solid var(--line);
+    font: 500 14px/1.7 var(--mono);
+  }
+  pre .c { color: var(--muted); }
+
+  /* Raccourcis */
+  .keys { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 48px; margin-top: 40px; }
+  @media (max-width: 760px) { .keys { grid-template-columns: 1fr; } }
+  .key-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 13px 0; border-bottom: 1px solid var(--line); font-size: 15.5px; }
+  .key-row span:first-child { color: var(--muted); }
+  kbd {
+    font: 500 12.5px var(--mono); padding: 3px 8px; border-radius: 6px; white-space: nowrap;
+    background: var(--surface); border: 1px solid var(--line); border-bottom-width: 2px;
+  }
+
+  /* Pied */
+  .closing { text-align: center; padding: 120px 0 0; }
+  .closing h2 { margin-inline: auto; }
+  footer { margin-top: 120px; border-top: 1px solid var(--line); padding: 32px 0 48px; color: var(--muted); font-size: 14px; }
+  footer .wrap { display: flex; gap: 12px 28px; flex-wrap: wrap; justify-content: space-between; }
+  footer a { color: var(--muted); }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .btn, .dl { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#"><img src="images/ondes.svg" alt="" width="32" height="32">Ondes</a>
+    <nav>
+      <a class="hide-sm" href="#fonctions">Fonctions</a>
+      <a class="hide-sm" href="#telecharger">Télécharger</a>
+      <a class="gh" href="https://github.com/alr51/ondes">
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        GitHub
+      </a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="hero">
+    <div class="waves" aria-hidden="true">
+      <svg viewBox="0 0 1600 900">
+        <circle cx="800" cy="420" r="120"/><circle cx="800" cy="420" r="220"/><circle cx="800" cy="420" r="330"/>
+        <circle cx="800" cy="420" r="450"/><circle cx="800" cy="420" r="580"/><circle cx="800" cy="420" r="720"/>
+      </svg>
+    </div>
+    <div class="wrap">
+      <a class="eyebrow" id="release-link" href="https://github.com/alr51/ondes/releases/latest">
+        <span class="dot"></span><span id="release-label">Dernière version</span>
+      </a>
+      <h1>Toutes les <span class="grad">ondes</span>,<br>un seul lecteur.</h1>
+      <p class="lede">Des milliers de webradios du monde entier et ta bibliothèque musicale, dans une application de bureau libre, rapide et légère.</p>
+      <div class="cta">
+        <a class="btn primary" id="cta-download" href="#telecharger">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+          <span id="cta-label">Télécharger</span>
+        </a>
+        <a class="btn" href="https://github.com/alr51/ondes">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg>
+          Code source
+        </a>
+      </div>
+      <p class="meta">Linux · Windows · macOS — gratuit, sans compte ni publicité</p>
+    </div>
+    <div class="shot-hero">
+      <picture>
+        <source srcset="images/explore-dark.webp" media="(prefers-color-scheme: dark)">
+        <img src="images/explore-light.webp" width="1280" height="837" alt="Ondes : la page « Explorer les radios », avec la recherche, les filtres par pays, langue et genre, et la liste des stations.">
+      </picture>
+    </div>
+  </div>
+
+  <section id="fonctions">
+    <div class="wrap">
+      <div class="kicker">Fonctions</div>
+      <h2>La radio du monde et ta musique, au même endroit.</h2>
+      <p class="section-lede">Ondes réunit l'annuaire mondial des webradios et tes fichiers audio, avec une interface pensée pour le clavier.</p>
+
+      <div class="features">
+        <article class="feature">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/></svg></div>
+          <h3>Des milliers de webradios</h3>
+          <p>L'annuaire libre Radio Browser : recherche instantanée, filtres par pays, langue et genre, logos des stations.</p>
+        </article>
+        <article class="feature">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg></div>
+          <h3>Favoris et titre en cours</h3>
+          <p>Garde tes stations préférées, ajoute un flux à la main ou importe une playlist <code>.m3u</code> / <code>.pls</code>. Le morceau diffusé s'affiche en direct.</p>
+        </article>
+        <article class="feature">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="2"/></svg></div>
+          <h3>Ta bibliothèque locale</h3>
+          <p>Tes dossiers de musique indexés en arrière-plan : tags, pochettes, vues par morceaux, albums, artistes et dossiers. Les ajouts sont détectés tout seuls.</p>
+        </article>
+        <article class="feature">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.3-4.3"/><circle cx="11" cy="11" r="8"/></svg></div>
+          <h3>Recherche instantanée</h3>
+          <p>Tape quelques lettres : titres, artistes et albums sont filtrés à chaque frappe, sans tenir compte des accents ni des majuscules.</p>
+        </article>
+        <article class="feature">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/></svg></div>
+          <h3>Fait pour le clavier</h3>
+          <p>Une palette de commandes (<kbd>Ctrl</kbd> <kbd>K</kbd>) pour tout faire sans souris, et les touches multimédia du clavier qui pilotent la lecture.</p>
+        </article>
+        <article class="feature">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg></div>
+          <h3>Rapide et libre</h3>
+          <p>Écrit en Rust avec GPUI, l'interface accélérée par le GPU de l'éditeur Zed. Code source ouvert, sous licence MIT ou Apache-2.0.</p>
+        </article>
+      </div>
+
+      <div class="gallery">
+        <figure>
+          <img src="images/albums-dark.webp" width="1280" height="837" loading="lazy" alt="La vue Albums d'Ondes en thème sombre, avec les pochettes, l'artiste, l'année et la durée de chaque album.">
+          <figcaption>Les albums de ta bibliothèque, avec leurs pochettes.</figcaption>
+        </figure>
+        <figure>
+          <img src="images/tracks-light.webp" width="1280" height="837" loading="lazy" alt="La vue Morceaux d'Ondes en thème clair : tableau triable par titre, artiste, album et durée.">
+          <figcaption>Tous les morceaux, triables, en thème clair ou sombre.</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section id="telecharger">
+    <div class="wrap">
+      <div class="kicker">Télécharger</div>
+      <h2>Installe Ondes sur ton ordinateur.</h2>
+      <p class="section-lede">Choisis le paquet de ton système. Ondes te préviendra ensuite quand une nouvelle version sera disponible.</p>
+
+      <div class="downloads">
+        <a class="dl" data-os="linux" data-ext=".deb" href="https://github.com/alr51/ondes/releases/latest">
+          <span class="tag">Ton système</span>
+          <span class="os">Linux</span>
+          <span class="fmt">Debian, Ubuntu, Mint…</span>
+          <span class="file">.deb · x86_64</span>
+        </a>
+        <a class="dl" data-os="linux" data-ext=".AppImage" href="https://github.com/alr51/ondes/releases/latest">
+          <span class="tag">Ton système</span>
+          <span class="os">Linux</span>
+          <span class="fmt">Toutes distributions</span>
+          <span class="file">AppImage · x86_64</span>
+        </a>
+        <a class="dl" data-os="windows" data-ext="-setup.exe" href="https://github.com/alr51/ondes/releases/latest">
+          <span class="tag">Ton système</span>
+          <span class="os">Windows</span>
+          <span class="fmt">Windows 10 et 11</span>
+          <span class="file">Installateur · x64</span>
+        </a>
+        <a class="dl" data-os="mac" data-ext=".dmg" href="https://github.com/alr51/ondes/releases/latest">
+          <span class="tag">Ton système</span>
+          <span class="os">macOS</span>
+          <span class="fmt">Apple Silicon (M1 et suivants)</span>
+          <span class="file">.dmg · arm64</span>
+        </a>
+      </div>
+      <p class="note">La version macOS n'a pas encore été testée. Toutes les versions sont sur la <a href="https://github.com/alr51/ondes/releases">page des releases</a>.</p>
+
+<pre><span class="c"># Debian, Ubuntu : installer le paquet téléchargé</span>
+sudo apt install ./ondes_*_amd64.deb
+
+<span class="c"># Autres distributions : rendre l'AppImage exécutable</span>
+chmod +x ondes_*_x86_64.AppImage && ./ondes_*_x86_64.AppImage</pre>
+    </div>
+  </section>
+
+  <section id="raccourcis">
+    <div class="wrap">
+      <div class="kicker">Raccourcis</div>
+      <h2>Tout au clavier.</h2>
+      <div class="keys">
+        <div class="key-row"><span>Palette de commandes</span><span><kbd>Ctrl</kbd> <kbd>K</kbd></span></div>
+        <div class="key-row"><span>Lecture / pause</span><span><kbd>Ctrl</kbd> <kbd>Espace</kbd></span></div>
+        <div class="key-row"><span>Morceau suivant / précédent</span><span><kbd>Alt</kbd> <kbd>→</kbd> / <kbd>←</kbd></span></div>
+        <div class="key-row"><span>Avancer / reculer de 10 s</span><span><kbd>Alt</kbd> <kbd>Maj</kbd> <kbd>→</kbd> / <kbd>←</kbd></span></div>
+        <div class="key-row"><span>Volume</span><span><kbd>Ctrl</kbd> <kbd>↑</kbd> / <kbd>↓</kbd></span></div>
+        <div class="key-row"><span>Aléatoire / répétition</span><span><kbd>Ctrl</kbd> <kbd>U</kbd> / <kbd>R</kbd></span></div>
+        <div class="key-row"><span>Radio en cours en favori</span><span><kbd>Ctrl</kbd> <kbd>D</kbd></span></div>
+        <div class="key-row"><span>Écouter une URL / un fichier</span><span><kbd>Ctrl</kbd> <kbd>L</kbd> / <kbd>O</kbd></span></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="closing">
+    <div class="wrap">
+      <h2>Prêt à écouter ?</h2>
+      <div class="cta">
+        <a class="btn primary" href="#telecharger">Télécharger Ondes</a>
+        <a class="btn" href="https://github.com/alr51/ondes/issues">Signaler un problème</a>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Ondes — logiciel libre, licence MIT ou Apache-2.0.</span>
+    <span>Annuaire des stations : <a href="https://www.radio-browser.info/">Radio Browser</a> · <a href="https://github.com/alr51/ondes">GitHub</a></span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  // Système du visiteur, pour mettre son paquet en avant.
+  var ua = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || navigator.userAgent || "";
+  ua = ua.toLowerCase();
+  var os = /win/.test(ua) ? "windows" : /mac|iphone|ipad/.test(ua) ? "mac" : /linux|x11|cros/.test(ua) && !/android/.test(navigator.userAgent.toLowerCase()) ? "linux" : null;
+  var names = { windows: "Windows", mac: "macOS", linux: "Linux" };
+
+  var cards = document.querySelectorAll(".dl");
+  if (os) {
+    cards.forEach(function (c) { if (c.dataset.os === os) c.classList.add("mine"); });
+    document.getElementById("cta-label").textContent = "Télécharger pour " + names[os];
+  }
+
+  // Liens directs vers les fichiers de la dernière release.
+  fetch("https://api.github.com/repos/alr51/ondes/releases/latest", { headers: { Accept: "application/vnd.github+json" } })
+    .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+    .then(function (release) {
+      var version = release.tag_name.replace(/^v/, "");
+      document.getElementById("release-label").textContent = "Version " + version + " disponible";
+      document.getElementById("release-link").href = release.html_url;
+      var assets = release.assets || [];
+      cards.forEach(function (c) {
+        var a = assets.find(function (x) { return x.name.endsWith(c.dataset.ext); });
+        if (a) {
+          c.href = a.browser_download_url;
+          c.querySelector(".file").textContent = a.name;
+        }
+      });
+      var mine = document.querySelector(".dl.mine");
+      if (mine && mine.href.indexOf("/download/") !== -1) {
+        document.getElementById("cta-download").href = mine.href;
+      }
+    })
+    .catch(function () { /* Liens vers la page des releases, déjà en place. */ });
+})();
+</script>
+</body>
+</html>

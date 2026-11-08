@@ -5,7 +5,7 @@
 Écouter des webradios et explorer les sons de l'ordinateur local.
 Rust + [GPUI](https://www.gpui.rs/) + [GPUI Kit](https://gpui-kit.com/).
 
-Voir [ROADMAP.md](ROADMAP.md).
+Site : <https://alr51.github.io/ondes/> (sources dans `site/`). Voir [ROADMAP.md](ROADMAP.md).
 
 ## Installation
 
@@ -14,8 +14,8 @@ Ou localement, dans `target/packages/` après `cargo packager --release`
 (nécessite `cargo install cargo-packager --locked`) :
 
 ```sh
-sudo apt install ./target/packages/ondes_0.1.0_amd64.deb   # Debian / Ubuntu
-./target/packages/ondes_0.1.0_x86_64.AppImage              # autres distributions
+sudo apt install ./target/packages/ondes_*_amd64.deb   # Debian / Ubuntu
+./target/packages/ondes_*_x86_64.AppImage              # autres distributions
 ```
 
 Une étiquette `v*` poussée sur GitHub déclenche la CI de release
