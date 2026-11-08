@@ -1,0 +1,62 @@
+name: Windows (démarrage)
+
+# Lance ondes.exe sur un runner Windows et vérifie qu'il démarre : pas de
+# panique, fenêtre ouverte, touches multimédia (SMTC) actives. Le runner n'a
+# pas de GPU : GPUI se rabat sur le rendu DirectX logiciel (WARP).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup show active-toolchain
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release -p ondes
+
+      - name: Démarrage
+        shell: pwsh
+        env:
+          RUST_LOG: ondes=debug
+        run: |
+          $p = Start-Process -FilePath target\release\ondes.exe -PassThru
+          Start-Sleep -Seconds 20
+          $alive = -not $p.HasExited
+          if ($alive) { Stop-Process -Id $p.Id -Force }
+
+          # %APPDATA%\ondes\data\ondes.log (directories::ProjectDirs).
+          $log = Get-ChildItem $env:APPDATA, $env:LOCALAPPDATA -Recurse -Filter ondes.log -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+          if (-not $log) { Write-Output "::error::journal ondes.log introuvable"; exit 1 }
+          Copy-Item $log.FullName ondes.log
+          Get-Content ondes.log
+
+          $text = Get-Content ondes.log -Raw
+          $failed = $false
+          if (-not $alive) {
+            Write-Output "::error::ondes.exe s'est arrêté (code $($p.ExitCode))"; $failed = $true
+          }
+          if ($text -match 'plantage') {
+            Write-Output "::error::panique dans le journal"; $failed = $true
+          }
+          if ($text -match "impossible d'ouvrir la fenêtre") {
+            Write-Output "::error::la fenêtre ne s'est pas ouverte"; $failed = $true
+          }
+          if ($text -notmatch 'touches multimédia actives') {
+            Write-Output "::error::touches multimédia (SMTC) non initialisées"; $failed = $true
+          }
+          if ($failed) { exit 1 }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ondes-windows-log
+          path: ondes.log
+          if-no-files-found: ignore

@@ -93,6 +93,7 @@ impl System {
                 (None, None)
             }
             Some(Ok(c)) => {
+                tracing::info!("touches multimédia actives");
                 let task = cx.spawn_in(window, async move |this, cx| {
                     while let Ok(event) = rx.recv_async().await {
                         if this
