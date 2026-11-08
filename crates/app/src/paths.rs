@@ -37,6 +37,15 @@ pub fn music_dir() -> Option<PathBuf> {
         .filter(|p| p.is_dir())
 }
 
+/// Enregistrements de flux : `~/Musique/Ondes`.
+pub fn recordings() -> PathBuf {
+    directories::UserDirs::new()
+        .and_then(|d| d.audio_dir().map(|p| p.to_path_buf()))
+        .or_else(|| directories::UserDirs::new().map(|d| d.home_dir().join("Musique")))
+        .unwrap_or_else(std::env::temp_dir)
+        .join("Ondes")
+}
+
 /// État persistant (volume, dernière source, fenêtre…) : `~/.local/share/ondes/state.toml`.
 pub fn state_file() -> PathBuf {
     database().with_file_name("state.toml")

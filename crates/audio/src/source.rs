@@ -1,10 +1,12 @@
 //! Décodage sur un thread dédié et source non bloquante pour la sortie audio.
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::time::Duration;
 
 use ondes_sources::Opened;
+
+use crate::dsp::{DspShared, EqProcessor, SmoothGain};
 use rodio::{ChannelCount, Decoder, Sample, SampleRate, Source};
 
 /// Taille d'un bloc d'échantillons transmis par le décodeur.
@@ -38,15 +40,50 @@ impl BufferConfig {
 }
 
 /// État partagé entre la source (thread audio) et le moteur.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Shared {
     /// Échantillons en attente dans la file.
     queued: AtomicUsize,
     /// La source joue du silence faute de données.
     starved: AtomicBool,
+    /// Gain visé (bits d'un `f32`) : volume, ReplayGain, fondu.
+    gain: AtomicU32,
+    /// Trames réellement jouées (hors silence de mise en tampon).
+    played: AtomicU64,
+    /// Au moins un échantillon de la source a été joué.
+    started: AtomicBool,
+}
+
+impl Default for Shared {
+    fn default() -> Self {
+        Self {
+            queued: AtomicUsize::new(0),
+            starved: AtomicBool::new(false),
+            gain: AtomicU32::new(1f32.to_bits()),
+            played: AtomicU64::new(0),
+            started: AtomicBool::new(false),
+        }
+    }
 }
 
 impl Shared {
+    pub fn set_gain(&self, gain: f32) {
+        self.gain.store(gain.max(0.).to_bits(), Ordering::Relaxed);
+    }
+
+    fn gain(&self) -> f32 {
+        f32::from_bits(self.gain.load(Ordering::Relaxed))
+    }
+
+    /// Trames jouées depuis l'ouverture.
+    pub fn played_frames(&self) -> u64 {
+        self.played.load(Ordering::Relaxed)
+    }
+
+    pub fn has_started(&self) -> bool {
+        self.started.load(Ordering::Relaxed)
+    }
+
     pub fn is_starved(&self) -> bool {
         self.starved.load(Ordering::Relaxed)
     }
@@ -69,7 +106,12 @@ pub struct Prepared {
 /// Construit le décodeur (bloquant : lit l'en-tête du flux), puis lance le
 /// thread de décodage. À appeler hors du thread audio.
 /// `start` : position de départ (0 = début), pour se déplacer dans un fichier.
-pub fn prepare(opened: Opened, config: BufferConfig, start: Duration) -> Result<Prepared, String> {
+pub fn prepare(
+    opened: Opened,
+    config: BufferConfig,
+    start: Duration,
+    dsp: Arc<DspShared>,
+) -> Result<Prepared, String> {
     let Opened {
         reader,
         hint,
@@ -130,6 +172,7 @@ pub fn prepare(opened: Opened, config: BufferConfig, start: Duration) -> Result<
             sample_rate,
             duration,
             prebuffer,
+            dsp,
         ),
         shared,
         sample_rate: sample_rate.get(),
@@ -197,6 +240,12 @@ pub struct StreamingSource {
     channels: ChannelCount,
     sample_rate: SampleRate,
     duration: Option<Duration>,
+    dsp: Arc<DspShared>,
+    eq: EqProcessor,
+    gain: SmoothGain,
+    /// Gain de la trame en cours, et position dans la trame.
+    frame_gain: f32,
+    frame_pos: usize,
 }
 
 impl StreamingSource {
@@ -207,9 +256,15 @@ impl StreamingSource {
         sample_rate: SampleRate,
         duration: Option<Duration>,
         prebuffer: usize,
+        dsp: Arc<DspShared>,
     ) -> Self {
         shared.starved.store(true, Ordering::Relaxed);
         Self {
+            eq: EqProcessor::new(channels.get() as usize, sample_rate.get()),
+            gain: SmoothGain::new(sample_rate.get()),
+            frame_gain: 1.,
+            frame_pos: 0,
+            dsp,
             rx,
             shared,
             current: Vec::new(),
@@ -241,7 +296,12 @@ impl Iterator for StreamingSource {
             }
             if let Some(&s) = self.current.get(self.pos) {
                 self.pos += 1;
-                return Some(s);
+                if self.frame_pos == 0 {
+                    self.frame_gain = self.gain.next(self.shared.gain());
+                    self.shared.played.fetch_add(1, Ordering::Relaxed);
+                }
+                self.frame_pos = (self.frame_pos + 1) % self.channels.get() as usize;
+                return Some(s * self.frame_gain);
             }
 
             // Bloc courant épuisé : en mise en tampon, attendre d'avoir assez d'avance
@@ -256,11 +316,17 @@ impl Iterator for StreamingSource {
             }
 
             match self.rx.try_recv() {
-                Ok(chunk) => {
+                Ok(mut chunk) => {
                     self.shared.queued.fetch_sub(chunk.len(), Ordering::Relaxed);
                     if self.buffering {
                         self.buffering = false;
                         self.shared.starved.store(false, Ordering::Relaxed);
+                    }
+                    self.shared.started.store(true, Ordering::Relaxed);
+                    let channels = self.channels.get() as usize;
+                    self.eq.process(&mut chunk, &self.dsp);
+                    if self.dsp.tap.enabled() {
+                        self.dsp.tap.push(&chunk, channels, self.sample_rate.get());
                     }
                     self.current = chunk;
                     self.pos = 0;
@@ -334,7 +400,15 @@ mod tests {
     fn source_with(prebuffer: usize) -> (StreamingSource, flume::Sender<Vec<Sample>>, Arc<Shared>) {
         let shared = Arc::new(Shared::default());
         let (tx, rx) = flume::bounded(16);
-        let src = StreamingSource::new(rx, shared.clone(), nz16(2), nz32(48_000), None, prebuffer);
+        let src = StreamingSource::new(
+            rx,
+            shared.clone(),
+            nz16(2),
+            nz32(48_000),
+            None,
+            prebuffer,
+            Arc::default(),
+        );
         (src, tx, shared)
     }
 
@@ -380,8 +454,16 @@ mod tests {
             hint: Some("wav".into()),
             mime: None,
             live: false,
+            replay_gain: None,
+            recorder: None,
         };
-        let prepared = prepare(opened, BufferConfig::for_source(false), Duration::ZERO).unwrap();
+        let prepared = prepare(
+            opened,
+            BufferConfig::for_source(false),
+            Duration::ZERO,
+            Arc::default(),
+        )
+        .unwrap();
         assert_eq!(prepared.channels, 1);
         assert_eq!(prepared.sample_rate, 8_000);
         let d = prepared.duration.unwrap().as_millis();
@@ -406,7 +488,17 @@ mod tests {
             mime: None,
             byte_len: Some(4096),
             live: false,
+            replay_gain: None,
+            recorder: None,
         };
-        assert!(prepare(opened, BufferConfig::for_source(false), Duration::ZERO).is_err());
+        assert!(
+            prepare(
+                opened,
+                BufferConfig::for_source(false),
+                Duration::ZERO,
+                Arc::default(),
+            )
+            .is_err()
+        );
     }
 }

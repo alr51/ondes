@@ -3,6 +3,7 @@
 
 mod about;
 mod actions;
+mod audio_settings;
 mod library;
 mod library_view;
 mod logos;
@@ -16,6 +17,7 @@ mod radio_favorites;
 mod runtime;
 mod settings;
 mod shell;
+mod spectrum;
 mod station_row;
 mod system;
 mod update;

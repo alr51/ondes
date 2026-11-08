@@ -1,7 +1,7 @@
 //! État persistant entre deux lancements : `~/.local/share/ondes/state.toml`.
 //!
 //! Volume, dernière source écoutée, page, thème, fenêtre, aléatoire et
-//! répétition, notifications, mises à jour. Écrit avec un léger délai après chaque
+//! répétition, notifications, mises à jour, réglages audio. Écrit avec un léger délai après chaque
 //! changement (et de façon atomique) pour ne pas solliciter le disque.
 
 use std::path::PathBuf;
@@ -42,6 +42,66 @@ pub struct WindowState {
     pub maximized: bool,
 }
 
+/// Réglages audio : égaliseur, normalisation, enchaînements, spectre.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AudioSettings {
+    pub eq_enabled: bool,
+    /// Correction des 10 bandes, en dB.
+    pub eq_gains: [f32; 10],
+    /// `off`, `track` ou `album`.
+    pub replay_gain: String,
+    /// Durée du fondu enchaîné, en secondes (0 : enchaînement sans blanc).
+    pub crossfade_secs: f32,
+    /// Fondu aussi entre deux morceaux d'un même album.
+    pub crossfade_same_album: bool,
+    /// Spectre dans la barre de lecture.
+    pub visualizer: bool,
+    /// Dossier des enregistrements de flux (défaut : `Musique/Ondes`).
+    pub record_dir: Option<PathBuf>,
+}
+
+impl Default for AudioSettings {
+    fn default() -> Self {
+        Self {
+            eq_enabled: false,
+            eq_gains: [0.; 10],
+            replay_gain: "off".into(),
+            crossfade_secs: 0.,
+            crossfade_same_album: false,
+            visualizer: true,
+            record_dir: None,
+        }
+    }
+}
+
+impl AudioSettings {
+    pub fn equalizer(&self) -> ondes_audio::Equalizer {
+        ondes_audio::Equalizer {
+            enabled: self.eq_enabled,
+            gains: self.eq_gains,
+        }
+    }
+
+    pub fn replay_gain_mode(&self) -> ondes_audio::ReplayGainMode {
+        match self.replay_gain.as_str() {
+            "track" => ondes_audio::ReplayGainMode::Track,
+            "album" => ondes_audio::ReplayGainMode::Album,
+            _ => ondes_audio::ReplayGainMode::Off,
+        }
+    }
+
+    pub fn crossfade(&self) -> Duration {
+        Duration::from_secs_f32(self.crossfade_secs.clamp(0., 15.))
+    }
+
+    pub fn record_dir(&self) -> PathBuf {
+        self.record_dir
+            .clone()
+            .unwrap_or_else(crate::paths::recordings)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppState {
@@ -58,6 +118,7 @@ pub struct AppState {
     pub last_update_check: Option<u64>,
     pub window: Option<WindowState>,
     pub last: Option<LastSource>,
+    pub audio: AudioSettings,
 }
 
 impl Default for AppState {
@@ -73,6 +134,7 @@ impl Default for AppState {
             last_update_check: None,
             window: None,
             last: None,
+            audio: AudioSettings::default(),
         }
     }
 }
@@ -181,5 +243,6 @@ mod tests {
         assert!(old.notifications);
         assert!(old.check_updates);
         assert_eq!(old.last, None);
+        assert_eq!(old.audio, super::AudioSettings::default());
     }
 }

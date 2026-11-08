@@ -19,6 +19,7 @@ use crate::player::Player;
 use crate::queue::Repeat;
 use crate::radio::FavoritesModel;
 use crate::radio_explore::toggle_favorite;
+use crate::spectrum::Spectrum;
 
 pub struct PlayerBar {
     player: Entity<Player>,
@@ -27,6 +28,7 @@ pub struct PlayerBar {
     progress: Entity<SliderState>,
     /// Position affichée pendant que l'utilisateur fait glisser la barre.
     dragging: Option<Duration>,
+    spectrum: Entity<Spectrum>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -86,11 +88,13 @@ impl PlayerBar {
             }),
             cx.observe(&FavoritesModel::global(cx), |_, _, cx| cx.notify()),
         ];
+        let spectrum = cx.new(|cx| Spectrum::new(player.clone(), cx));
         Self {
             player,
             volume,
             progress,
             dragging: None,
+            spectrum,
             _subscriptions: subscriptions,
         }
     }
@@ -200,6 +204,8 @@ impl Render for PlayerBar {
         let repeat = p.repeat();
         let volume = p.volume();
         let position = self.dragging.unwrap_or(p.position);
+        let recording = p.recording.is_some();
+        let can_record = p.can_record() || recording;
 
         let subtitle = match status(p) {
             Status::Hint(text) => div()
@@ -405,6 +411,27 @@ impl Render for PlayerBar {
                                     toggle_favorite(&favs, &station, window, cx);
                                 }),
                         )
+                    })
+                    .when(can_record, |row| {
+                        row.child(
+                            Button::new("record")
+                                .icon(if recording {
+                                    Icon::new(IconName::CircleDot).text_color(theme.danger)
+                                } else {
+                                    Icon::new(IconName::Circle)
+                                })
+                                .ghost()
+                                .small()
+                                .selected(recording)
+                                .tooltip(if recording {
+                                    "Arrêter l'enregistrement"
+                                } else {
+                                    "Enregistrer le direct"
+                                })
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.player.update(cx, |p, cx| p.toggle_recording(cx));
+                                })),
+                        )
                     }),
             )
             // Transport + progression
@@ -423,6 +450,7 @@ impl Render for PlayerBar {
                     .justify_end()
                     .gap_2()
                     .items_center()
+                    .child(div().mr_2().child(self.spectrum.clone()))
                     .child(
                         div()
                             .text_color(theme.muted_foreground)

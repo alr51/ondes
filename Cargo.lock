@@ -4725,6 +4725,7 @@ name = "ondes"
 version = "0.3.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "directories",
  "embed-resource",
  "fastrand",
@@ -4805,6 +4806,7 @@ dependencies = [
  "bytes",
  "flume",
  "futures-util",
+ "lofty",
  "reqwest",
  "thiserror 2.0.21",
  "tokio",

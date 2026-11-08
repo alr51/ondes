@@ -120,15 +120,21 @@ Principes :
 - [x] Mises à jour : vérification de la dernière release GitHub au démarrage (une fois par jour, désactivable) ou à la demande (palette, « À propos »), notification avec lien de téléchargement — pas d'installation automatique (le `.deb` demande root, les autres formats des paquets signés)
 - [x] Installation du `.deb`, AppImage, passage d'un morceau illisible, « À propos » — validés à la main
 
+### Phase 6 — Confort d'écoute
+- [x] Égaliseur 10 bandes (biquads, ±12 dB, préampli automatique, préréglages), appliqué à la sortie : effet immédiat, même sur un direct
+- [x] Normalisation ReplayGain (par morceau / par album, limitée par la crête), tags lus avec `lofty`
+- [x] Morceau suivant préchargé : enchaînement sans blanc, ou fondu enchaîné réglable (0–10 s, pas entre deux morceaux d'un même album sauf réglage)
+- [x] Spectre dans la barre de lecture (FFT maison, sans `rustfft`)
+- [x] Enregistrement d'un direct (MP3/AAC/HLS, sans réencodage) dans `Musique/Ondes`, Ctrl+Maj+R
+- [x] Fenêtre « Réglages audio » (barre latérale, palette, Ctrl+,)
+- [x] Égaliseur, ReplayGain, fondu, spectre, enregistrement — validés à la main
+
 ### Backlog
 - Flatpak (Flathub) (voir phase 5)
 - Installation automatique des mises à jour (`cargo-packager-updater`, paquets signés) pour AppImage, NSIS et `.dmg`
 - Build macOS à vérifier, build Intel ou universel
 - Icône dans la zone de notification (`tray-icon`) pour les bureaux qui en ont une
 - Titres ICY des flux Radio France (pas d'ICY : API dédiée à étudier)
-- Égaliseur, ReplayGain, fondu enchaîné
-- Enregistrement d'un flux dans un fichier
-- Visualiseur (FFT, `rustfft`)
 - Historique des titres entendus
 - Minuteur de mise en veille
 

@@ -14,6 +14,7 @@ use tokio::runtime::Handle;
 use url::Url;
 
 use crate::http::{HttpOptions, HttpReader, StatusFn, StreamStatus, host_of, network_error};
+use crate::record::Recorder;
 use crate::ts::{TsAudio, TsDemuxer};
 use crate::{Opened, SourceError};
 
@@ -357,7 +358,8 @@ pub(crate) fn open(
         };
         let data = fetch(&client, &segment.uri, MAX_SEGMENT_BYTES).await?;
         let (mut unpacker, hint) = detect(&data, init.is_some())?;
-        let mut head = init.map(|i| i.to_vec()).unwrap_or_default();
+        let init = init.map(|i| i.to_vec()).unwrap_or_default();
+        let mut head = init.clone();
         head.extend_from_slice(&unpacker.unpack(data));
         let next_seq = segment.seq + 1;
         Ok::<_, SourceError>((
@@ -366,10 +368,11 @@ pub(crate) fn open(
             next_seq,
             unpacker,
             hint,
+            init,
             Bytes::from(head),
         ))
     })?;
-    let (media_url, media, next_seq, unpacker, hint, head) = start;
+    let (media_url, media, next_seq, unpacker, hint, init, head) = start;
 
     tracing::info!(%media_url, hint, ended = media.ended, "flux HLS ouvert");
     let title = host_of(&url).unwrap_or_else(|| url.clone());
@@ -384,14 +387,21 @@ pub(crate) fn open(
     };
     let task = handle.spawn(pump.run(media, next_seq, head));
 
+    // fMP4 : un enregistrement commencé en cours de route a besoin de l'initialisation.
+    let recorder = Recorder::default();
+    recorder.set_header(init);
+    let mut reader = HttpReader::new(rx, task.abort_handle());
+    reader.recorder = Some(recorder.clone());
     Ok(Opened {
-        reader: Box::new(HttpReader::new(rx, task.abort_handle())),
+        reader: Box::new(reader),
         title,
         hint: Some(hint.to_string()),
         mime: None,
         byte_len: None,
         // Même un HLS fini (ENDLIST) est lu sans déplacement possible.
         live: true,
+        replay_gain: None,
+        recorder: Some(recorder),
     })
 }
 

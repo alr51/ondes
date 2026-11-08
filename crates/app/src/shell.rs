@@ -157,7 +157,7 @@ impl Shell {
         });
 
         let player = cx.new(|cx| {
-            let mut p = Player::new(saved.volume, cx);
+            let mut p = Player::new(saved.volume, &saved.audio, cx);
             p.queue.shuffle = saved.shuffle;
             p.queue.repeat = match saved.repeat.as_str() {
                 "all" => Repeat::All,
@@ -203,12 +203,24 @@ impl Shell {
             cx.subscribe_in(
                 &player,
                 window,
-                |_, _, notice: &PlayerNotice, window, cx| {
-                    let PlayerNotice::Skipped { title, reason } = notice;
-                    window.push_notification(
+                |_, _, notice: &PlayerNotice, window, cx| match notice {
+                    PlayerNotice::Skipped { title, reason } => window.push_notification(
                         Notification::warning(format!("« {title} » ignoré : {reason}")),
                         cx,
-                    );
+                    ),
+                    PlayerNotice::Recorded(done) => {
+                        let size = format!("{:.1} Mo", done.bytes as f64 / 1e6);
+                        let note = match &done.error {
+                            Some(err) => Notification::error(format!(
+                                "Enregistrement interrompu ({size}) : {err}"
+                            )),
+                            None => Notification::success(format!(
+                                "Enregistré ({size}) : {}",
+                                done.path.display()
+                            )),
+                        };
+                        window.push_notification(note, cx);
+                    }
                 },
             ),
             cx.observe_window_bounds(window, |_, window, cx| {
@@ -258,6 +270,8 @@ impl Shell {
             cx.defer_in(window, move |this, window, cx| {
                 if what == "about" {
                     crate::about::open(window, cx);
+                } else if what == "audio" {
+                    crate::audio_settings::open(this.player.clone(), window, cx);
                 } else {
                     this.open_palette(window, cx);
                 }
@@ -396,6 +410,7 @@ impl Shell {
         on_player!(VolumeDown, |p, cx| p.change_volume(-0.05, cx));
         on_player!(ToggleShuffle, |p, cx| p.toggle_shuffle(cx));
         on_player!(CycleRepeat, |p, cx| p.cycle_repeat(cx));
+        on_player!(ToggleRecording, |p, cx| p.toggle_recording(cx));
 
         macro_rules! with_window {
             ($action:ty, |$this:ident, $window:ident, $cx:ident| $body:expr) => {{
@@ -418,6 +433,9 @@ impl Shell {
         with_window!(OpenPalette, |this, window, cx| this
             .open_palette(window, cx));
         with_window!(About, |_this, window, cx| crate::about::open(window, cx));
+        with_window!(OpenAudioSettings, |this, window, cx| {
+            crate::audio_settings::open(this.player.clone(), window, cx)
+        });
         with_window!(FocusLocation, |this, window, cx| {
             this.location.update(cx, |s, cx| s.focus(window, cx));
         });
@@ -577,6 +595,17 @@ impl Shell {
                         .items_center()
                         .child(self.render_rt_status(cx))
                         .child(div().flex_1())
+                        .child({
+                            let player = self.player.clone();
+                            Button::new("audio-settings")
+                                .icon(IconName::SlidersHorizontal)
+                                .ghost()
+                                .small()
+                                .tooltip("Réglages audio")
+                                .on_click(move |_, window, cx| {
+                                    crate::audio_settings::open(player.clone(), window, cx)
+                                })
+                        })
                         .child(
                             Button::new("about")
                                 .icon(IconName::Info)

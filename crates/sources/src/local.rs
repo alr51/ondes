@@ -4,9 +4,58 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
 
+use lofty::config::ParseOptions;
+use lofty::prelude::*;
+
 use crate::{Opened, SourceError};
 
-/// Ouvre un fichier local. Les tags (titre, artiste) arrivent en phase 3.
+/// Normalisation du volume (tags `REPLAYGAIN_*`), en dB et en amplitude.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct ReplayGain {
+    pub track_gain: Option<f32>,
+    pub track_peak: Option<f32>,
+    pub album_gain: Option<f32>,
+    pub album_peak: Option<f32>,
+}
+
+impl ReplayGain {
+    /// Lit les tags d'un fichier (sans décoder l'audio ni les pochettes).
+    pub fn read(path: &Path) -> Option<Self> {
+        let file = lofty::probe::Probe::open(path)
+            .ok()?
+            .options(
+                ParseOptions::new()
+                    .read_properties(false)
+                    .read_cover_art(false),
+            )
+            .read()
+            .ok()?;
+        let tag = file.primary_tag().or_else(|| file.first_tag())?;
+        let value = |key| tag.get_string(key).and_then(parse_number);
+        let rg = Self {
+            track_gain: value(ItemKey::ReplayGainTrackGain),
+            track_peak: value(ItemKey::ReplayGainTrackPeak),
+            album_gain: value(ItemKey::ReplayGainAlbumGain),
+            album_peak: value(ItemKey::ReplayGainAlbumPeak),
+        };
+        (rg.track_gain.is_some() || rg.album_gain.is_some()).then_some(rg)
+    }
+}
+
+/// `-6.54 dB`, `+1,2 dB`, `0.988` → nombre.
+fn parse_number(s: &str) -> Option<f32> {
+    let s = s
+        .trim()
+        .trim_end_matches(|c: char| c.is_alphabetic())
+        .trim();
+    s.replace(',', ".")
+        .trim_start_matches('+')
+        .parse::<f32>()
+        .ok()
+        .filter(|v| v.is_finite())
+}
+
+/// Ouvre un fichier local.
 pub fn open_file(path: &Path) -> Result<Opened, SourceError> {
     let file = File::open(path)?;
     let byte_len = file.metadata().ok().map(|m| m.len());
@@ -21,6 +70,8 @@ pub fn open_file(path: &Path) -> Result<Opened, SourceError> {
         mime: None,
         byte_len,
         live: false,
+        replay_gain: ReplayGain::read(path),
+        recorder: None,
     })
 }
 
@@ -53,6 +104,14 @@ mod tests {
         assert_eq!(buf, "abc");
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn parses_replay_gain_values() {
+        assert_eq!(parse_number("-6.54 dB"), Some(-6.54));
+        assert_eq!(parse_number("+1,5 dB"), Some(1.5));
+        assert_eq!(parse_number(" 0.988707 "), Some(0.988707));
+        assert_eq!(parse_number("n/a"), None);
     }
 
     #[test]

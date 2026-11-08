@@ -17,6 +17,7 @@ use tokio::runtime::Handle;
 use crate::hls;
 use crate::icy::IcyDemuxer;
 use crate::playlist::{PlaylistKind, first_stream_url};
+use crate::record::Recorder;
 use crate::{Opened, SourceError};
 
 /// Réglages de connexion.
@@ -107,13 +108,18 @@ pub fn open_stream(
     let (tx, rx) = flume::bounded(opts.buffer_chunks.max(1));
     let task = handle.spawn(pump(client, stream_url, resp, tx, live, opts, status));
 
+    let recorder = live.then(Recorder::default);
+    let mut reader = HttpReader::new(rx, task.abort_handle());
+    reader.recorder = recorder.clone();
     Ok(Opened {
-        reader: Box::new(HttpReader::new(rx, task.abort_handle())),
+        reader: Box::new(reader),
         title,
         hint,
         mime,
         byte_len,
         live,
+        replay_gain: None,
+        recorder,
     })
 }
 
@@ -345,6 +351,8 @@ pub(crate) struct HttpReader {
     current: Bytes,
     pos: u64,
     task: tokio::task::AbortHandle,
+    /// Copie des octets lus quand un enregistrement est en cours.
+    pub(crate) recorder: Option<Recorder>,
 }
 
 impl HttpReader {
@@ -354,6 +362,7 @@ impl HttpReader {
             current: Bytes::new(),
             pos: 0,
             task,
+            recorder: None,
         }
     }
 }
@@ -372,6 +381,9 @@ impl Read for HttpReader {
         }
         let n = buf.len().min(self.current.len());
         buf[..n].copy_from_slice(&self.current[..n]);
+        if let Some(rec) = &self.recorder {
+            rec.write(&buf[..n]);
+        }
         self.current.advance(n);
         self.pos += n as u64;
         Ok(n)

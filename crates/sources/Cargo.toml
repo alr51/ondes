@@ -16,6 +16,7 @@ reqwest.workspace = true
 futures-util.workspace = true
 url.workspace = true
 bytes.workspace = true
+lofty.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["net", "io-util"] }

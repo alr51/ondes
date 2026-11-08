@@ -1,10 +1,14 @@
 //! Modèle du lecteur côté UI : relaie les commandes au moteur audio et
 //! reflète ses événements dans une entité GPUI observable.
 
+use std::path::PathBuf;
 use std::time::Duration;
 
 use gpui_kit::*;
-use ondes_audio::{AudioEngine, Command, Event, PlaybackState, SourceSpec, TrackInfo};
+use ondes_audio::{
+    Analyzer, AudioEngine, Command, Event, NextTrack, PlaybackState, Recorded, SourceSpec,
+    TrackInfo,
+};
 use ondes_library::Track;
 use ondes_radio::Station;
 
@@ -12,12 +16,14 @@ use crate::library::LibraryModel;
 use crate::queue::{Queue, Repeat};
 use crate::radio::Directory;
 use crate::runtime::Rt;
-use crate::settings::LastSource;
+use crate::settings::{AudioSettings, LastSource, Settings};
 
 /// Événement à signaler à l'utilisateur (notification dans la fenêtre).
 pub enum PlayerNotice {
     /// Morceau de la file illisible, passé automatiquement.
     Skipped { title: String, reason: String },
+    /// Enregistrement d'un direct terminé.
+    Recorded(Recorded),
 }
 
 impl EventEmitter<PlayerNotice> for Player {}
@@ -42,11 +48,16 @@ pub struct Player {
     /// Morceaux illisibles d'affilée (évite de boucler sur une file entière).
     failures_in_row: usize,
     volume: f32,
+    /// Fichier de l'enregistrement en cours du direct.
+    pub recording: Option<PathBuf>,
+    analyzer: Option<Analyzer>,
+    /// Fondu enchaîné aussi entre deux morceaux d'un même album.
+    crossfade_same_album: bool,
     _events: Task<()>,
 }
 
 impl Player {
-    pub fn new(volume: f32, cx: &mut Context<Self>) -> Self {
+    pub fn new(volume: f32, audio: &AudioSettings, cx: &mut Context<Self>) -> Self {
         let (engine, error) = match AudioEngine::start(Rt::handle(cx)) {
             Ok(engine) => (Some(engine), None),
             Err(e) => {
@@ -58,6 +69,9 @@ impl Player {
         let events_task = match &engine {
             Some(engine) => {
                 engine.send(Command::SetVolume(volume));
+                engine.send(Command::SetEqualizer(audio.equalizer()));
+                engine.send(Command::SetReplayGain(audio.replay_gain_mode()));
+                engine.send(Command::SetCrossfade(audio.crossfade()));
                 let events = engine.events();
                 cx.spawn(async move |this, cx| {
                     while let Ok(event) = events.recv_async().await {
@@ -76,8 +90,15 @@ impl Player {
             None => Task::ready(()),
         };
 
+        let analyzer = engine.as_ref().map(AudioEngine::analyzer);
+        if let Some(a) = &analyzer {
+            a.set_enabled(audio.visualizer);
+        }
         Self {
             engine,
+            analyzer,
+            recording: None,
+            crossfade_same_album: audio.crossfade_same_album,
             state: PlaybackState::Idle,
             track: None,
             station: None,
@@ -119,6 +140,29 @@ impl Player {
                 self.track = Some(track);
                 self.pending = None;
                 self.position = Duration::ZERO;
+                self.sync_next();
+            }
+            // Le moteur a enchaîné le morceau préchargé : la file avance aussi.
+            Event::Advanced(track) => {
+                self.queue.next(true);
+                if self
+                    .queue
+                    .current()
+                    .is_none_or(|t| SourceSpec::File(t.path.clone()) != track.spec)
+                {
+                    tracing::warn!(title = %track.title, "file et moteur désynchronisés");
+                }
+                self.failures_in_row = 0;
+                self.now_playing = None;
+                self.track = Some(track);
+                self.pending = None;
+                self.position = Duration::ZERO;
+                self.sync_next();
+            }
+            Event::RecordingStarted(path) => self.recording = Some(path),
+            Event::RecordingStopped(done) => {
+                self.recording = None;
+                cx.emit(PlayerNotice::Recorded(done));
             }
             Event::Position(pos) => self.position = pos,
             Event::Reconnecting { attempt } => self.reconnecting = Some(attempt),
@@ -283,12 +327,76 @@ impl Player {
 
     pub fn toggle_shuffle(&mut self, cx: &mut Context<Self>) {
         self.queue.set_shuffle(!self.queue.shuffle);
+        self.sync_next();
         cx.notify();
     }
 
     pub fn cycle_repeat(&mut self, cx: &mut Context<Self>) {
         self.queue.repeat = self.queue.repeat.cycle();
+        self.sync_next();
         cx.notify();
+    }
+
+    /// Indique au moteur le morceau à précharger et à enchaîner.
+    fn sync_next(&self) {
+        let next = self
+            .queue
+            .current()
+            .zip(self.queue.peek_next())
+            .map(|(cur, next)| {
+                let same_album = cur.album.is_some()
+                    && cur.album == next.album
+                    && cur.album_artist_or_artist() == next.album_artist_or_artist();
+                NextTrack {
+                    spec: SourceSpec::File(next.path.clone()),
+                    crossfade: self.crossfade_same_album || !same_album,
+                }
+            });
+        self.send(Command::SetNext(next));
+    }
+
+    /// Applique les réglages audio (égaliseur, normalisation, fondu, spectre).
+    pub fn apply_audio_settings(&mut self, audio: &AudioSettings) {
+        self.send(Command::SetEqualizer(audio.equalizer()));
+        self.send(Command::SetReplayGain(audio.replay_gain_mode()));
+        self.send(Command::SetCrossfade(audio.crossfade()));
+        if let Some(a) = &self.analyzer {
+            a.set_enabled(audio.visualizer);
+        }
+        if self.crossfade_same_album != audio.crossfade_same_album {
+            self.crossfade_same_album = audio.crossfade_same_album;
+            self.sync_next();
+        }
+    }
+
+    pub fn analyzer(&self) -> Option<&Analyzer> {
+        self.analyzer.as_ref()
+    }
+
+    /// Le direct en cours peut-il être enregistré ?
+    pub fn can_record(&self) -> bool {
+        self.track.as_ref().is_some_and(|t| t.live) && self.state.is_active()
+    }
+
+    /// Commence ou arrête l'enregistrement du direct.
+    pub fn toggle_recording(&mut self, cx: &mut Context<Self>) {
+        if self.recording.is_some() {
+            self.send(Command::Record(None));
+            return;
+        }
+        if !self.can_record() {
+            return;
+        }
+        let name = self
+            .current_station()
+            .map(|s| s.name)
+            .or_else(|| self.title())
+            .unwrap_or_else(|| "Radio".into());
+        let dir = Settings::get(cx).audio.record_dir();
+        let stamp = chrono::Local::now().format("%Y-%m-%d %Hh%M");
+        self.send(Command::Record(Some(
+            dir.join(format!("{} {stamp}", file_name_safe(&name))),
+        )));
     }
 
     pub fn repeat(&self) -> Repeat {
@@ -366,5 +474,36 @@ impl Player {
     pub fn has_source(&self) -> bool {
         self.engine.is_some()
             && (self.track.is_some() || self.pending.is_some() || self.resume.is_some())
+    }
+}
+
+/// Nom utilisable comme nom de fichier sur tous les systèmes.
+fn file_name_safe(name: &str) -> String {
+    let cleaned: String = name
+        .chars()
+        .map(|c| match c {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '-',
+            c if c.is_control() => ' ',
+            c => c,
+        })
+        .collect();
+    let cleaned = cleaned.trim().trim_matches('.').trim();
+    let cleaned: String = cleaned.chars().take(80).collect();
+    if cleaned.is_empty() {
+        "Radio".into()
+    } else {
+        cleaned
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn safe_file_names() {
+        assert_eq!(
+            super::file_name_safe("FIP / Jazz: live?"),
+            "FIP - Jazz- live-"
+        );
+        assert_eq!(super::file_name_safe(" ..  "), "Radio");
     }
 }

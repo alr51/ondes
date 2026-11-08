@@ -21,6 +21,8 @@ gpui_kit::actions!(
         VolumeDown,
         ToggleShuffle,
         CycleRepeat,
+        ToggleRecording,
+        OpenAudioSettings,
         ToggleFavorite,
         OpenPalette,
         FocusLocation,
@@ -52,6 +54,8 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("ctrl-u", ToggleShuffle, None),
         KeyBinding::new("ctrl-r", CycleRepeat, None),
         KeyBinding::new("ctrl-d", ToggleFavorite, None),
+        KeyBinding::new("ctrl-shift-r", ToggleRecording, None),
+        KeyBinding::new("ctrl-,", OpenAudioSettings, None),
         KeyBinding::new("ctrl-k", OpenPalette, None),
         KeyBinding::new("ctrl-shift-p", OpenPalette, None),
         KeyBinding::new("ctrl-l", FocusLocation, None),
@@ -120,6 +124,26 @@ pub fn palette() -> Vec<(&'static str, Vec<PaletteEntry>)> {
                     Repeat,
                     CycleRepeat,
                     ["repeat", "boucle"]
+                ),
+                entry!(
+                    "Enregistrer le direct / arrêter l'enregistrement",
+                    CircleDot,
+                    ToggleRecording,
+                    ["enregistrer", "record", "capture"]
+                ),
+                entry!(
+                    "Réglages audio…",
+                    SlidersHorizontal,
+                    OpenAudioSettings,
+                    [
+                        "égaliseur",
+                        "equalizer",
+                        "replaygain",
+                        "normalisation",
+                        "fondu",
+                        "crossfade",
+                        "spectre"
+                    ]
                 ),
                 entry!(
                     "Ajouter / retirer la radio des favoris",

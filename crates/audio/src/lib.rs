@@ -9,14 +9,41 @@
 //! file d'échantillons bornée → [`source::StreamingSource`] tirée par la
 //! sortie audio. La sortie ne bloque jamais : si la file est vide, elle joue
 //! du silence et l'état passe à « mise en tampon ».
+//!
+//! Au moment de partir vers la sortie, les échantillons passent par
+//! l'égaliseur puis par un gain lissé (volume, ReplayGain, fondus). Le
+//! morceau suivant d'une file est préchargé : il s'enchaîne sans blanc, ou en
+//! fondu enchaîné.
 
+mod dsp;
 mod engine;
 mod source;
 
+use std::path::PathBuf;
 use std::time::Duration;
 
+pub use dsp::{Analyzer, EQ_FREQS, EQ_MAX_DB, Equalizer};
 pub use engine::AudioEngine;
-pub use ondes_sources::SourceSpec;
+pub use ondes_sources::{Recorded, ReplayGain, SourceSpec};
+
+/// Normalisation du volume d'après les tags ReplayGain.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ReplayGainMode {
+    #[default]
+    Off,
+    /// Gain propre à chaque morceau.
+    Track,
+    /// Gain de l'album : garde les écarts voulus entre ses morceaux.
+    Album,
+}
+
+/// Morceau à enchaîner après celui en cours.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NextTrack {
+    pub spec: SourceSpec,
+    /// Fondu enchaîné permis (faux entre deux morceaux d'un même album).
+    pub crossfade: bool,
+}
 
 /// Ordres envoyés au moteur.
 #[derive(Debug, Clone, PartialEq)]
@@ -33,6 +60,15 @@ pub enum Command {
     SetVolume(f32),
     /// Se place à cette position (fichiers seulement ; ignoré pour un direct).
     Seek(Duration),
+    SetEqualizer(Equalizer),
+    SetReplayGain(ReplayGainMode),
+    /// Durée du fondu enchaîné (zéro : enchaînement sans blanc).
+    SetCrossfade(Duration),
+    /// Morceau à précharger et à enchaîner à la fin de celui en cours.
+    SetNext(Option<NextTrack>),
+    /// Enregistre le direct en cours dans ce fichier (extension ajoutée
+    /// d'après le format), ou arrête l'enregistrement.
+    Record(Option<PathBuf>),
 }
 
 /// État de lecture.
@@ -69,6 +105,7 @@ pub struct TrackInfo {
     pub format: Option<String>,
     pub sample_rate: u32,
     pub channels: u16,
+    pub replay_gain: Option<ReplayGain>,
 }
 
 /// Événements émis par le moteur.
@@ -77,6 +114,11 @@ pub enum Event {
     State(PlaybackState),
     /// Nouvelle source chargée.
     Track(TrackInfo),
+    /// Passage automatique au morceau préchargé ([`Command::SetNext`]).
+    Advanced(TrackInfo),
+    RecordingStarted(PathBuf),
+    /// Enregistrement terminé (arrêt demandé, changement de source, erreur).
+    RecordingStopped(Recorded),
     /// Position de lecture (émise régulièrement pendant la lecture).
     Position(Duration),
     /// Titre en cours annoncé par la radio (ICY), au moment où il devient audible.

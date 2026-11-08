@@ -9,6 +9,7 @@ mod http;
 mod icy;
 mod local;
 mod playlist;
+mod record;
 mod ts;
 
 use std::io::{Read, Seek};
@@ -16,8 +17,9 @@ use std::path::PathBuf;
 
 pub use http::{HttpOptions, StreamStatus, open_stream};
 pub use icy::{IcyDemuxer, parse_stream_title};
-pub use local::open_file;
+pub use local::{ReplayGain, open_file};
 pub use playlist::{PlaylistEntry, PlaylistKind, first_stream_url, parse_entries};
+pub use record::{Recorded, Recorder};
 
 /// Ce que l'utilisateur demande à écouter.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -71,6 +73,10 @@ pub struct Opened {
     pub byte_len: Option<u64>,
     /// `true` pour un flux sans fin (radio) : ni seek ni durée.
     pub live: bool,
+    /// Tags ReplayGain d'un fichier.
+    pub replay_gain: Option<ReplayGain>,
+    /// Enregistrement possible (flux en direct).
+    pub recorder: Option<Recorder>,
 }
 
 impl std::fmt::Debug for Opened {

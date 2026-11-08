@@ -66,6 +66,25 @@ impl Queue {
         !self.is_empty() && (self.pos + 1 < self.order.len() || self.repeat != Repeat::Off)
     }
 
+    /// Morceau qui suivra à la fin naturelle de celui en cours, sans changer
+    /// la file. `None` si inconnu d'avance (fin de file mélangée en boucle).
+    pub fn peek_next(&self) -> Option<&Track> {
+        if self.is_empty() {
+            return None;
+        }
+        if self.repeat == Repeat::One {
+            return self.current();
+        }
+        let next = if self.pos + 1 < self.order.len() {
+            self.pos + 1
+        } else if self.repeat == Repeat::All && !self.shuffle {
+            0
+        } else {
+            return None;
+        };
+        self.items.get(self.order[next])
+    }
+
     /// Passe au morceau suivant. `auto` : fin naturelle du morceau
     /// (« répéter un » rejoue alors le même). `None` en fin de file.
     pub fn next(&mut self, auto: bool) -> Option<&Track> {
@@ -153,6 +172,28 @@ mod tests {
         assert_eq!(title(q.prev()), Some("t1".into()));
         assert_eq!(title(q.prev()), Some("t0".into()));
         assert_eq!(title(q.prev()), Some("t0".into())); // début : reste sur le premier
+    }
+
+    #[test]
+    fn peek_matches_next() {
+        let mut q = Queue::default();
+        q.set(items(3), 1);
+        assert_eq!(title(q.peek_next()), Some("t2".into()));
+        q.next(true);
+        assert_eq!(q.peek_next(), None);
+        q.repeat = Repeat::All;
+        assert_eq!(title(q.peek_next()), Some("t0".into()));
+        assert_eq!(title(q.next(true)), Some("t0".into()));
+        q.repeat = Repeat::One;
+        assert_eq!(title(q.peek_next()), Some("t0".into()));
+        q.repeat = Repeat::All;
+        q.set_shuffle(true);
+        // Fin de file mélangée : l'ordre suivant n'est pas encore tiré.
+        while q.pos + 1 < q.order.len() {
+            assert!(q.peek_next().is_some());
+            q.next(true);
+        }
+        assert_eq!(q.peek_next(), None);
     }
 
     #[test]
