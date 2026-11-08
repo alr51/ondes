@@ -2,7 +2,8 @@ name: Paquets
 
 # Construit les paquets à la demande (bouton « Run workflow » de l'onglet
 # Actions : artefacts téléchargeables pour tester avant de publier) et les
-# publie dans une release GitHub quand une étiquette `v*` est poussée.
+# publie dans une release GitHub quand une étiquette `v*` est poussée. Les
+# notes de la release viennent de CHANGELOG.md (scripts/release-notes.py).
 # Plus lancé à chaque push sur main : le job macOS coûte 10× les minutes Linux.
 on:
   push:
@@ -17,7 +18,34 @@ permissions:
   contents: write
 
 jobs:
+  # Crée la release avec ses notes. Échoue avant toute compilation si
+  # CHANGELOG.md n'a pas de section pour la version, ou si l'étiquette ne
+  # correspond pas à la version de Cargo.toml.
+  notes:
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Notes de la version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          cargo_version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          if [ "$version" != "$cargo_version" ]; then
+            echo "::error::étiquette v$version, mais Cargo.toml est en $cargo_version"
+            exit 1
+          fi
+          python3 scripts/release-notes.py "$version" > release-notes.md
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Ondes ${{ env.VERSION }}
+          body_path: release-notes.md
+
   package:
+    needs: notes
+    # Lancé aussi sans étiquette (bouton « Run workflow »), quand `notes` est ignoré.
+    if: ${{ !failure() && !cancelled() }}
     strategy:
       fail-fast: false
       matrix:
