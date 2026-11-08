@@ -12,6 +12,7 @@
 # consomme que l'espace réellement écrit. Rendu graphique : la VM n'a pas de
 # GPU, Windows utilise le rendu DirectX logiciel (WARP) — lent mais suffisant
 # pour vérifier qu'Ondes démarre.
+# Mémoire : 4 Go par défaut (minimum de Windows 11), ONDES_VM_RAM=<Mo> pour changer.
 set -euo pipefail
 
 VM=ondes-win11
@@ -35,22 +36,23 @@ make_share() {
 
 case "${1:-}" in
 create)
-    iso="${2:?chemin de l'ISO Windows 11 requis}"
+    iso="${2:?chemin de l’ISO Windows 11 requis}"
     mkdir -p "$DIR"
     [ -e "$DISK" ] || qemu-img create -q -f qcow2 "$DISK" 64G
     make_share
     virt-install --connect "$CONN" \
         --name "$VM" \
         --osinfo win11 \
-        --memory 6144 --vcpus 4 --cpu host-passthrough \
+        --memory "${ONDES_VM_RAM:-4096}" --vcpus 4 --cpu host-passthrough \
         --boot uefi,firmware.feature0.name=secure-boot,firmware.feature0.enabled=yes,firmware.feature1.name=enrolled-keys,firmware.feature1.enabled=yes \
         --tpm backend.type=emulator,backend.version=2.0,model=tpm-crb \
-        --disk "path=$DISK,bus=sata" \
-        --disk "path=$iso,device=cdrom,bus=sata" \
+        --disk "path=$DISK,bus=sata,boot.order=2" \
+        --disk "path=$iso,device=cdrom,bus=sata,boot.order=1" \
         --disk "path=$SHARE,device=cdrom,bus=sata" \
         --network user,model=e1000e \
         --graphics spice --video qxl \
         --sound ich9 \
+        --import \
         --noautoconsole
     echo "VM créée. Écran : scripts/windows-vm.sh view"
     ;;
