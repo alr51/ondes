@@ -68,19 +68,31 @@ pub struct System {
 impl System {
     pub fn new(player: Entity<Player>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let (tx, rx) = flume::unbounded::<MediaControlEvent>();
-        let controls = MediaControls::new(PlatformConfig {
-            display_name: "Ondes",
-            dbus_name: "ondes",
-            hwnd: None,
-        })
-        .and_then(|mut c| {
-            c.attach(move |event| {
-                let _ = tx.send(event);
-            })?;
-            Ok(c)
-        });
+        let hwnd = hwnd(window);
+        // Sous Windows, souvlaki panique (`expect`) sans HWND : on s'abstient.
+        let controls = if cfg!(target_os = "windows") && hwnd.is_none() {
+            None
+        } else {
+            Some(
+                MediaControls::new(PlatformConfig {
+                    display_name: "Ondes",
+                    dbus_name: "ondes",
+                    hwnd,
+                })
+                .and_then(|mut c| {
+                    c.attach(move |event| {
+                        let _ = tx.send(event);
+                    })?;
+                    Ok(c)
+                }),
+            )
+        };
         let (controls, events) = match controls {
-            Ok(c) => {
+            None => {
+                tracing::warn!("touches multimédia indisponibles : pas de HWND");
+                (None, None)
+            }
+            Some(Ok(c)) => {
                 let task = cx.spawn_in(window, async move |this, cx| {
                     while let Ok(event) = rx.recv_async().await {
                         if this
@@ -93,7 +105,7 @@ impl System {
                 });
                 (Some(c), Some(task))
             }
-            Err(e) => {
+            Some(Err(e)) => {
                 tracing::warn!("touches multimédia / MPRIS indisponibles : {e:?}");
                 (None, None)
             }
@@ -157,7 +169,12 @@ impl System {
         if let Some(controls) = &mut self.controls {
             if now != self.shown {
                 let meta = now.clone().unwrap_or_default();
-                let cover_url = meta.cover.as_ref().map(|c| format!("file://{c}"));
+                // `file:///C:/…` sous Windows, échappement des espaces, etc.
+                let cover_url = meta
+                    .cover
+                    .as_ref()
+                    .and_then(|c| reqwest::Url::from_file_path(c).ok())
+                    .map(String::from);
                 let result = controls.set_metadata(MediaMetadata {
                     title: Some(meta.title.as_str()).filter(|t| !t.is_empty()),
                     artist: meta.artist.as_deref(),
@@ -196,6 +213,22 @@ impl System {
             }
         }
     }
+}
+
+/// HWND de la fenêtre principale : SMTC (Windows) s'attache à une fenêtre,
+/// et souvlaki panique sans elle. Inutile ailleurs.
+#[cfg(target_os = "windows")]
+fn hwnd(window: &Window) -> Option<*mut std::ffi::c_void> {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    match window.window_handle().map(|h| h.as_raw()) {
+        Ok(RawWindowHandle::Win32(h)) => Some(h.hwnd.get() as *mut std::ffi::c_void),
+        _ => None,
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn hwnd(_: &Window) -> Option<*mut std::ffi::c_void> {
+    None
 }
 
 fn signed(dir: SeekDirection, d: Duration) -> i64 {
