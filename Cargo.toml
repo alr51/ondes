@@ -16,6 +16,7 @@ ondes-audio = { path = "crates/audio" }
 ondes-sources = { path = "crates/sources" }
 ondes-radio = { path = "crates/radio" }
 ondes-library = { path = "crates/library" }
+ondes-visual = { path = "crates/visual" }
 # GPUI Kit embarque GPUI (`gpui-pre`) : version exacte, ne jamais ajouter `gpui` séparément.
 gpui-kit = "=0.9.0"
 tokio = { version = "1.54", features = ["rt-multi-thread", "time", "sync", "macros"] }
@@ -44,6 +45,8 @@ notify-rust = "4"
 # HWND de la fenêtre GPUI, exigé par souvlaki pour SMTC sous Windows.
 raw-window-handle = "0.6"
 toml = "1"
+# Déjà dans l'arbre (souvlaki) : attente des opérations wgpu des visualiseurs.
+pollster = "1"
 # Déjà dans l'arbre via GPUI : heure locale des noms d'enregistrements.
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 reqwest = { version = "0.13", default-features = false, features = ["stream", "rustls", "http2", "charset", "json", "query"] }

@@ -4738,6 +4738,7 @@ dependencies = [
  "ondes-core",
  "ondes-library",
  "ondes-radio",
+ "ondes-visual",
  "raw-window-handle",
  "reqwest",
  "serde",
@@ -4812,6 +4813,16 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
+]
+
+[[package]]
+name = "ondes-visual"
+version = "0.5.0"
+dependencies = [
+ "pollster 1.0.1",
+ "thiserror 2.0.21",
+ "tracing",
+ "wgpu",
 ]
 
 [[package]]

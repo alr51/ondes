@@ -120,6 +120,15 @@ impl Default for CompactState {
     }
 }
 
+/// Visualiseurs par shaders.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct VisualState {
+    /// Effet choisi (indice dans `ondes_visual::EFFECTS`).
+    pub effect: usize,
+    pub window: Option<WindowState>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppState {
@@ -138,6 +147,9 @@ pub struct AppState {
     pub last: Option<LastSource>,
     pub audio: AudioSettings,
     pub compact: CompactState,
+    pub visual: VisualState,
+    /// Mode d'affichage de la page « En cours ».
+    pub now_playing_mode: String,
 }
 
 impl Default for AppState {
@@ -155,6 +167,8 @@ impl Default for AppState {
             last: None,
             audio: AudioSettings::default(),
             compact: CompactState::default(),
+            visual: VisualState::default(),
+            now_playing_mode: "cover".into(),
         }
     }
 }

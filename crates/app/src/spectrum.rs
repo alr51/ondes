@@ -8,7 +8,10 @@ use crate::player::Player;
 use crate::settings::Settings;
 
 /// Descente maximale d'une barre par image (retombée progressive).
-const FALL: f32 = 0.035;
+const FALL: f32 = 0.07;
+/// Cadence d'animation : 30 images/s suffisent, et redessiner à chaque
+/// image d'un écran à 144 Hz coûte cher.
+const FRAME: std::time::Duration = std::time::Duration::from_millis(33);
 
 pub struct Spectrum {
     player: Entity<Player>,
@@ -18,6 +21,8 @@ pub struct Spectrum {
     bar_width: f32,
     /// Affiché même si le spectre est masqué dans les réglages (vue compacte).
     always: bool,
+    /// Minuterie d'animation, active pendant la lecture et la retombée.
+    tick: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -46,13 +51,14 @@ impl Spectrum {
             height,
             bar_width,
             always,
+            tick: None,
             _subscriptions: subscriptions,
         }
     }
 }
 
 impl Render for Spectrum {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let enabled = self.always || Settings::global(cx).read(cx).state.audio.visualizer;
         let p = self.player.read(cx);
         let Some(analyzer) = p.analyzer().filter(|_| enabled) else {
@@ -69,8 +75,18 @@ impl Render for Spectrum {
             *level = next.max(0.);
         }
         // Animé tant que la musique joue ou que les barres retombent.
-        if moving || p.state == PlaybackState::Playing {
-            window.request_animation_frame();
+        let animate = moving || p.state == PlaybackState::Playing;
+        if !animate {
+            self.tick = None;
+        } else if self.tick.is_none() {
+            self.tick = Some(cx.spawn(async move |this, cx| {
+                loop {
+                    cx.background_executor().timer(FRAME).await;
+                    if this.update(cx, |_, cx| cx.notify()).is_err() {
+                        break;
+                    }
+                }
+            }));
         }
 
         let color = cx.theme().primary;

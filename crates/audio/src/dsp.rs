@@ -6,7 +6,7 @@
 //! avec plusieurs secondes d'audio décodé d'avance.
 
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 
 /// Fréquences centrales des 10 bandes (octaves ISO).
 pub const EQ_FREQS: [f32; 10] = [
@@ -196,6 +196,9 @@ pub const FFT_SIZE: usize = 2048;
 #[derive(Default)]
 pub(crate) struct Tap {
     enabled: AtomicBool,
+    /// Visualiseurs ouverts : la prise reste active même si le petit
+    /// spectre est masqué.
+    holders: AtomicUsize,
     ring: Mutex<Ring>,
 }
 
@@ -208,7 +211,7 @@ struct Ring {
 
 impl Tap {
     pub(crate) fn enabled(&self) -> bool {
-        self.enabled.load(Ordering::Relaxed)
+        self.enabled.load(Ordering::Relaxed) || self.holders.load(Ordering::Relaxed) > 0
     }
 
     /// Ajoute un bloc entrelacé, réduit en mono.
@@ -242,6 +245,12 @@ impl Analyzer {
         if !on && let Ok(mut ring) = self.0.tap.ring.lock() {
             ring.buf.iter_mut().for_each(|s| *s = 0.);
         }
+    }
+
+    /// Garde la prise d'échantillons active tant que le jeton existe.
+    pub fn hold(&self) -> AnalyzerHold {
+        self.0.tap.holders.fetch_add(1, Ordering::Relaxed);
+        AnalyzerHold(self.0.clone())
     }
 
     /// Niveau (0 à 1) de `bars.len()` bandes réparties en échelle
@@ -288,6 +297,15 @@ impl Analyzer {
             // -60 dB → 0, 0 dB → 1.
             *bar = ((db + 60.) / 60.).clamp(0., 1.);
         }
+    }
+}
+
+/// Jeton de [`Analyzer::hold`].
+pub struct AnalyzerHold(std::sync::Arc<DspShared>);
+
+impl Drop for AnalyzerHold {
+    fn drop(&mut self) {
+        self.0.tap.holders.fetch_sub(1, Ordering::Relaxed);
     }
 }
 

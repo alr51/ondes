@@ -1,0 +1,23 @@
+[package]
+name = "ondes-visual"
+description = "Visualiseurs d'Ondes : shaders WGSL rendus hors écran avec wgpu"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+pollster.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+# Mêmes réglages que GPUI (gpui-pre-wgpu) : aucune dépendance de plus.
+[target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies]
+wgpu = { version = "30.0.1", default-features = false, features = ["std", "metal", "gles", "vulkan", "wgsl", "webgpu"] }
+
+[target.'cfg(not(any(target_os = "linux", target_os = "freebsd")))'.dependencies]
+wgpu = "30.0.1"
+
+[lints]
+workspace = true

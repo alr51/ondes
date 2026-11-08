@@ -24,6 +24,11 @@ gpui_kit::actions!(
         ToggleRecording,
         OpenAudioSettings,
         ToggleCompact,
+        ToggleVisualizer,
+        NextEffect,
+        PreviousEffect,
+        ToggleFullscreen,
+        CloseVisualizer,
         ToggleFavorite,
         OpenPalette,
         FocusLocation,
@@ -33,6 +38,7 @@ gpui_kit::actions!(
         CheckUpdates,
         ToggleUpdateCheck,
         About,
+        GoNowPlaying,
         GoExplore,
         GoFavorites,
         GoTracks,
@@ -57,11 +63,18 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("ctrl-d", ToggleFavorite, None),
         KeyBinding::new("ctrl-shift-r", ToggleRecording, None),
         KeyBinding::new("ctrl-shift-m", ToggleCompact, None),
+        KeyBinding::new("ctrl-shift-v", ToggleVisualizer, None),
+        // Fenêtre du visualiseur.
+        KeyBinding::new("right", NextEffect, Some("Visualizer")),
+        KeyBinding::new("left", PreviousEffect, Some("Visualizer")),
+        KeyBinding::new("f11", ToggleFullscreen, Some("Visualizer")),
+        KeyBinding::new("escape", CloseVisualizer, Some("Visualizer")),
         KeyBinding::new("ctrl-,", OpenAudioSettings, None),
         KeyBinding::new("ctrl-k", OpenPalette, None),
         KeyBinding::new("ctrl-shift-p", OpenPalette, None),
         KeyBinding::new("ctrl-l", FocusLocation, None),
         KeyBinding::new("ctrl-o", OpenFile, None),
+        KeyBinding::new("ctrl-0", GoNowPlaying, None),
         KeyBinding::new("ctrl-1", GoExplore, None),
         KeyBinding::new("ctrl-2", GoFavorites, None),
         KeyBinding::new("ctrl-3", GoTracks, None),
@@ -140,6 +153,12 @@ pub fn palette() -> Vec<(&'static str, Vec<PaletteEntry>)> {
                     ["compact", "mini", "réduire", "petit"]
                 ),
                 entry!(
+                    "Visualiseur",
+                    Sparkles,
+                    ToggleVisualizer,
+                    ["visualiseur", "shader", "effets", "plein écran"]
+                ),
+                entry!(
                     "Réglages audio…",
                     SlidersHorizontal,
                     OpenAudioSettings,
@@ -164,6 +183,12 @@ pub fn palette() -> Vec<(&'static str, Vec<PaletteEntry>)> {
         (
             "Aller à",
             vec![
+                entry!(
+                    "En cours",
+                    Disc3,
+                    GoNowPlaying,
+                    ["lecture", "pochette", "visualiseur", "spectre", "file"]
+                ),
                 entry!(
                     "Explorer les radios",
                     Radio,

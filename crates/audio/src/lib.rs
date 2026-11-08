@@ -22,7 +22,7 @@ mod source;
 use std::path::PathBuf;
 use std::time::Duration;
 
-pub use dsp::{Analyzer, EQ_FREQS, EQ_MAX_DB, Equalizer};
+pub use dsp::{Analyzer, AnalyzerHold, EQ_FREQS, EQ_MAX_DB, Equalizer};
 pub use engine::AudioEngine;
 pub use ondes_sources::{Recorded, ReplayGain, SourceSpec};
 

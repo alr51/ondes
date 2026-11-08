@@ -7,6 +7,20 @@ automatiquement). Avant de publier une version, renommer la section
 
 ## [Non publié]
 
+### Visualiseur
+Des effets visuels animés par la musique, calculés par la carte graphique.
+
+- Ouvrez le visualiseur avec le bouton ✨ de la barre de lecture, la palette de commandes ou **Ctrl+Maj+V**.
+- Quatre effets : **Nébuleuse**, **Anneau**, **Tunnel** et **Ondes**. Ils réagissent au spectre, au volume et aux temps forts de la musique.
+- **Plein écran** avec F11 ou un double-clic ; Échap pour en sortir. Les flèches ← → changent d'effet ; les commandes s'effacent quand la souris ne bouge plus.
+- Le visualiseur est aussi un mode de la vue compacte : un clic passe à l'effet suivant.
+
+### Page « En cours »
+Une nouvelle page **En cours** dans la fenêtre principale (barre latérale, palette de commandes ou **Ctrl+0**) affiche en grand ce qui est joué, au choix : pochette ou logo de la radio, spectre, visualiseur, titre, file d'attente. Le mode choisi est mémorisé.
+
+### Améliorations
+- Ondes consomme moins de processeur pendant la lecture : le spectre de la barre de lecture ne redessine plus toute la fenêtre à chaque image de l'écran.
+
 ## [0.5.0] — 2026-11-08
 
 ### Vue compacte

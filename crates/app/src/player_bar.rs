@@ -452,6 +452,17 @@ impl Render for PlayerBar {
                     .items_center()
                     .child(div().mr_2().child(self.spectrum.clone()))
                     .child(
+                        Button::new("visualizer")
+                            .icon(IconName::Sparkles)
+                            .ghost()
+                            .small()
+                            .tooltip("Visualiseur (Ctrl+Maj+V)")
+                            .on_click(|_, window, cx| {
+                                window
+                                    .dispatch_action(Box::new(crate::actions::ToggleVisualizer), cx)
+                            }),
+                    )
+                    .child(
                         Button::new("compact")
                             .icon(IconName::PictureInPicture2)
                             .ghost()

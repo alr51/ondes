@@ -1,8 +1,7 @@
 //! Vue compacte : petite fenêtre du lecteur, la fenêtre principale réduite.
 //!
-//! Quatre modes d'affichage : pochette (ou logo de la radio), spectre, titre
-//! en grand, file d'attente. Le mode, la taille et la position sont
-//! mémorisés.
+//! Mêmes modes d'affichage que la page « En cours » (voir [`crate::stage`]).
+//! Le mode, la taille et la position sont mémorisés.
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::{
@@ -15,59 +14,12 @@ use gpui_kit::component::{
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
-use crate::logos::Logos;
 use crate::player::Player;
 use crate::player_bar::{Status, clock, status};
 use crate::radio::FavoritesModel;
 use crate::radio_explore::toggle_favorite;
 use crate::settings::{Settings, WindowState};
-use crate::spectrum::Spectrum;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Mode {
-    Cover,
-    Spectrum,
-    Title,
-    Queue,
-}
-
-impl Mode {
-    const ALL: [Mode; 4] = [Mode::Cover, Mode::Spectrum, Mode::Title, Mode::Queue];
-
-    fn key(self) -> &'static str {
-        match self {
-            Mode::Cover => "cover",
-            Mode::Spectrum => "spectrum",
-            Mode::Title => "title",
-            Mode::Queue => "queue",
-        }
-    }
-
-    fn from_key(key: &str) -> Self {
-        Self::ALL
-            .into_iter()
-            .find(|m| m.key() == key)
-            .unwrap_or(Mode::Cover)
-    }
-
-    fn icon(self) -> IconName {
-        match self {
-            Mode::Cover => IconName::Image,
-            Mode::Spectrum => IconName::AudioLines,
-            Mode::Title => IconName::Type,
-            Mode::Queue => IconName::ListMusic,
-        }
-    }
-
-    fn label(self) -> &'static str {
-        match self {
-            Mode::Cover => "Pochette",
-            Mode::Spectrum => "Spectre",
-            Mode::Title => "Titre",
-            Mode::Queue => "File d'attente",
-        }
-    }
-}
+use crate::stage::{Place, Stage, mode_bar};
 
 /// Ouvre la vue compacte et réduit la fenêtre principale `main`.
 pub fn open(
@@ -110,8 +62,7 @@ pub fn open(
 
 pub struct CompactView {
     player: Entity<Player>,
-    mode: Mode,
-    spectrum: Entity<Spectrum>,
+    stage: Entity<Stage>,
     volume: Entity<SliderState>,
     _subscriptions: Vec<Subscription>,
 }
@@ -123,8 +74,7 @@ impl CompactView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let mode = Mode::from_key(&Settings::get(cx).compact.mode);
-        let spectrum = cx.new(|cx| Spectrum::with_size(player.clone(), 28, 150., 6., true, cx));
+        let stage = cx.new(|cx| Stage::new(player.clone(), Place::Compact, cx));
         let initial = player.read(cx).volume();
         let volume = cx.new(|_| {
             SliderState::new()
@@ -149,7 +99,7 @@ impl CompactView {
                 cx.notify();
             }),
             cx.observe(&FavoritesModel::global(cx), |_, _, cx| cx.notify()),
-            cx.observe(&Logos::global(cx), |_, _, cx| cx.notify()),
+            cx.observe(&stage, |_, _, cx| cx.notify()),
             cx.observe_window_bounds(window, |_, window, cx| {
                 let b = window.bounds();
                 let state = WindowState {
@@ -169,172 +119,15 @@ impl CompactView {
         ];
         Self {
             player,
-            mode,
-            spectrum,
+            stage,
             volume,
             _subscriptions: subscriptions,
-        }
-    }
-
-    fn set_mode(&mut self, mode: Mode, cx: &mut Context<Self>) {
-        self.mode = mode;
-        Settings::update(cx, |s| s.compact.mode = mode.key().into());
-        cx.notify();
-    }
-
-    /// Image du mode « Pochette » : pochette du morceau, ou logo de la radio.
-    fn artwork(&self, cx: &mut Context<Self>) -> Option<std::path::PathBuf> {
-        let p = self.player.read(cx);
-        if let Some(cover) = p.current_track().and_then(|t| t.cover.clone()) {
-            return Some(cover);
-        }
-        let logo = p.station.as_ref()?.favicon.clone()?;
-        Logos::global(cx).update(cx, |l, cx| l.get(&logo, cx))
-    }
-
-    fn render_body(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let theme = cx.theme().clone();
-        match self.mode {
-            Mode::Cover => {
-                let live = self.player.read(cx).track.as_ref().is_some_and(|t| t.live);
-                let muted = theme.muted_foreground;
-                let fallback = move || {
-                    Icon::new(if live {
-                        IconName::Radio
-                    } else {
-                        IconName::Music
-                    })
-                    .size(px(64.))
-                    .text_color(muted)
-                    .into_any_element()
-                };
-                let image = match self.artwork(cx) {
-                    Some(path) => img(path)
-                        .size_full()
-                        .object_fit(ObjectFit::Contain)
-                        .with_fallback(fallback)
-                        .into_any_element(),
-                    None => fallback(),
-                };
-                div()
-                    .size_full()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded(theme.radius_lg)
-                    .overflow_hidden()
-                    .child(image)
-                    .into_any_element()
-            }
-            Mode::Spectrum => div()
-                .size_full()
-                .flex()
-                .items_center()
-                .justify_center()
-                .child(self.spectrum.clone())
-                .into_any_element(),
-            Mode::Title => {
-                let p = self.player.read(cx);
-                let main = p
-                    .now_playing
-                    .clone()
-                    .filter(|_| p.track.as_ref().is_some_and(|t| t.live))
-                    .or_else(|| p.title())
-                    .unwrap_or_else(|| "Aucune lecture".into());
-                let secondary = if p.track.as_ref().is_some_and(|t| t.live) {
-                    p.title().filter(|t| *t != main)
-                } else {
-                    p.track_subtitle()
-                };
-                v_flex()
-                    .size_full()
-                    .items_center()
-                    .justify_center()
-                    .gap_2()
-                    .px_2()
-                    .text_center()
-                    .child(div().text_2xl().font_semibold().child(main))
-                    .children(secondary.map(|s| {
-                        div()
-                            .text_base()
-                            .text_color(theme.muted_foreground)
-                            .child(s)
-                    }))
-                    .into_any_element()
-            }
-            Mode::Queue => {
-                let p = self.player.read(cx);
-                if p.queue.is_empty() {
-                    return div()
-                        .size_full()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .text_sm()
-                        .text_color(theme.muted_foreground)
-                        .child("File d'attente vide")
-                        .into_any_element();
-                }
-                let row = |title: String, detail: String, current: bool| {
-                    h_flex()
-                        .w_full()
-                        .gap_2()
-                        .px_2()
-                        .py_1()
-                        .rounded(theme.radius)
-                        .when(current, |r| r.bg(theme.accent))
-                        .child(
-                            v_flex()
-                                .flex_1()
-                                .min_w_0()
-                                .child(
-                                    div()
-                                        .text_sm()
-                                        .truncate()
-                                        .when(current, |d| d.font_semibold())
-                                        .child(title),
-                                )
-                                .child(
-                                    div()
-                                        .text_xs()
-                                        .truncate()
-                                        .text_color(theme.muted_foreground)
-                                        .child(detail),
-                                ),
-                        )
-                };
-                let detail = |t: &ondes_library::Track| {
-                    let artist = t.artist.clone().unwrap_or_default();
-                    match (artist.is_empty(), t.duration.is_zero()) {
-                        (false, false) => format!("{artist} · {}", clock(t.duration)),
-                        (false, true) => artist,
-                        (true, false) => clock(t.duration),
-                        (true, true) => String::new(),
-                    }
-                };
-                v_flex()
-                    .id("compact-queue")
-                    .size_full()
-                    .overflow_y_scroll()
-                    .gap_0p5()
-                    .children(
-                        p.current_track()
-                            .map(|t| row(t.title.clone(), detail(t), true)),
-                    )
-                    .children(
-                        p.queue
-                            .upcoming(50)
-                            .map(|t| row(t.title.clone(), detail(t), false)),
-                    )
-                    .into_any_element()
-            }
         }
     }
 }
 
 impl Render for CompactView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let body = self.render_body(cx);
         let theme = cx.theme().clone();
         let p = self.player.read(cx);
 
@@ -367,17 +160,8 @@ impl Render for CompactView {
             .map(|d| (p.position, d));
 
         let header = h_flex()
-            .gap_0p5()
             .items_center()
-            .children(Mode::ALL.map(|mode| {
-                Button::new(mode.key())
-                    .icon(mode.icon())
-                    .ghost()
-                    .xsmall()
-                    .selected(self.mode == mode)
-                    .tooltip(mode.label())
-                    .on_click(cx.listener(move |this, _, _, cx| this.set_mode(mode, cx)))
-            }))
+            .child(mode_bar(&self.stage, cx))
             .child(div().flex_1())
             .child(
                 Button::new("expand")
@@ -511,7 +295,7 @@ impl Render for CompactView {
             .bg(theme.background)
             .text_color(theme.foreground)
             .child(header)
-            .child(div().flex_1().min_h_0().child(body))
+            .child(div().flex_1().min_h_0().child(self.stage.clone()))
             .child(
                 v_flex()
                     .gap_0p5()

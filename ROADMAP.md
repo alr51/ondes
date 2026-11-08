@@ -129,6 +129,11 @@ Principes :
 - [x] Fenêtre « Réglages audio » (barre latérale, palette, Ctrl+,)
 - [x] Égaliseur, ReplayGain, fondu, spectre, enregistrement — validés à la main
 - [x] Vue compacte : petite fenêtre du lecteur (fenêtre principale réduite), modes pochette / logo, spectre, titre, file d'attente ; commandes, volume, favori, enregistrement ; mode et position mémorisés — Ctrl+Maj+M, bouton de la barre de lecture — validée à la main
+- [x] Visualiseurs par shaders (`ondes-visual`) : effets WGSL (Nébuleuse, Anneau, Tunnel, Ondes) rendus hors écran avec `wgpu` sur un thread dédié, relus et affichés comme image (GPUI n'accepte pas de shaders) ; entrées : 64 bandes, niveaux graves / médiums / aigus, temps forts, horloge musicale
+- [x] Fenêtre « Visualiseur » (Ctrl+Maj+V) : plein écran (F11, double-clic), ← → pour changer d'effet, commandes qui s'effacent ; 5e mode de la vue compacte
+- [x] Spectre de la barre de lecture à 30 images/s et pages en cache : de 31 % à 19 % de processeur pendant la lecture (release)
+- [x] Page « En cours » dans la fenêtre principale (Ctrl+0) : mêmes modes que la vue compacte (pochette / logo, spectre, visualiseur, titre, file d'attente), composant partagé `stage.rs` ; le visualiseur s'arrête quand on quitte la page
+- [x] Visualiseurs et page « En cours » — validés à la main
 - [ ] « Toujours au-dessus » pour la vue compacte — GPUI ne le permet pas (pas d'état `_NET_WM_STATE_ABOVE`)
 
 ### Backlog
@@ -149,11 +154,7 @@ Principes :
   - discographie (albums, singles, années) via MusicBrainz (gratuit, sans clé, 1 requête/s, User-Agent obligatoire), pochettes via Cover Art Archive ;
   - biographie et photo via Wikidata / Wikipédia (en français si disponible) ;
   - albums déjà présents dans la bibliothèque mis en évidence ; cache disque des réponses.
-- Visualiseurs par shaders, animés par le spectre (FFT déjà calculée par `ondes-audio`)
-  - vue plein écran (ou fenêtre à part) avec plusieurs effets au choix, pochette éventuellement intégrée ;
-  - entrées des shaders : bandes du spectre, niveau global, détection des temps forts, temps écoulé ;
-  - shaders WGSL rendus avec `wgpu` (déjà dans l'arbre via GPUI) ;
-  - obstacle : GPUI n'expose pas de shaders personnalisés. Pistes : rendu hors écran puis affichage comme image (copie GPU → CPU à chaque image), fenêtre `wgpu` dédiée, ou contribution à GPUI.
+- Visualiseurs : plus d'effets, pochette intégrée aux effets, effets écrits par l'utilisateur (fichiers `.wgsl` rechargés à chaud)
 
 ## Risques
 1. **GPUI et GPUI Kit évoluent vite** (0.6 → 0.9 en peu de temps) : versions fixées avec `=`, montées de version groupées.

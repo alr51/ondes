@@ -21,6 +21,7 @@ use ondes_audio::SourceSpec;
 
 use crate::actions::{self, *};
 use crate::library_view::{GroupKind, LibraryFolders, LibraryGroups, LibraryTracks};
+use crate::now_playing::NowPlaying;
 use crate::player::{Player, PlayerNotice};
 use crate::player_bar::PlayerBar;
 use crate::queue::Repeat;
@@ -34,6 +35,7 @@ use crate::system::System;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Page {
+    NowPlaying,
     RadioExplore,
     RadioFavorites,
     LibraryTracks,
@@ -55,6 +57,7 @@ impl Page {
     /// Identifiant stable, enregistré dans l'état.
     fn key(self) -> &'static str {
         match self {
+            Page::NowPlaying => "now",
             Page::RadioExplore => "explore",
             Page::RadioFavorites => "favorites",
             Page::LibraryTracks => "tracks",
@@ -66,6 +69,7 @@ impl Page {
 
     fn from_key(key: &str) -> Self {
         match key {
+            "now" => Page::NowPlaying,
             "favorites" => Page::RadioFavorites,
             "tracks" => Page::LibraryTracks,
             "albums" => Page::LibraryAlbums,
@@ -77,6 +81,7 @@ impl Page {
 
     fn title(self) -> &'static str {
         match self {
+            Page::NowPlaying => "En cours",
             Page::RadioExplore => "Explorer les radios",
             Page::RadioFavorites => "Radios favorites",
             Page::LibraryTracks => "Morceaux",
@@ -88,6 +93,7 @@ impl Page {
 
     fn icon(self) -> IconName {
         match self {
+            Page::NowPlaying => IconName::Disc3,
             Page::RadioExplore => IconName::Radio,
             Page::RadioFavorites => IconName::Heart,
             Page::LibraryTracks => IconName::ListMusic,
@@ -112,6 +118,7 @@ pub struct Shell {
     rt_status: RtStatus,
     player: Entity<Player>,
     player_bar: Entity<PlayerBar>,
+    now_playing: Entity<NowPlaying>,
     explore: Entity<RadioExplore>,
     favorites: Entity<RadioFavorites>,
     tracks: Entity<LibraryTracks>,
@@ -124,6 +131,7 @@ pub struct Shell {
     /// Fenêtre principale, et vue compacte si elle est ouverte.
     main_window: AnyWindowHandle,
     compact: Option<AnyWindowHandle>,
+    visualizer: Option<AnyWindowHandle>,
     _system: Entity<System>,
     _subscriptions: Vec<Subscription>,
 }
@@ -172,6 +180,7 @@ impl Shell {
             p
         });
         let player_bar = cx.new(|cx| PlayerBar::new(player.clone(), window, cx));
+        let now_playing = cx.new(|cx| NowPlaying::new(player.clone(), cx));
         let explore = cx.new(|cx| RadioExplore::new(player.clone(), window, cx));
         let favorites = cx.new(|cx| RadioFavorites::new(player.clone(), window, cx));
         let tracks = cx.new(|cx| LibraryTracks::new(player.clone(), window, cx));
@@ -254,6 +263,7 @@ impl Shell {
             rt_status: RtStatus::Checking,
             player,
             player_bar,
+            now_playing,
             explore,
             favorites,
             tracks,
@@ -264,6 +274,7 @@ impl Shell {
             palette,
             main_window: window.window_handle(),
             compact: None,
+            visualizer: None,
             _system: system,
             _subscriptions: subscriptions,
         };
@@ -279,6 +290,8 @@ impl Shell {
                     crate::audio_settings::open(this.player.clone(), window, cx);
                 } else if what == "compact" {
                     this.toggle_compact(cx);
+                } else if what == "visual" {
+                    this.toggle_visualizer(cx);
                 } else {
                     this.open_palette(window, cx);
                 }
@@ -403,7 +416,27 @@ impl Shell {
         });
     }
 
+    /// Ouvre ou ferme la fenêtre du visualiseur.
+    fn toggle_visualizer(&mut self, cx: &mut Context<Self>) {
+        if let Some(handle) = self.visualizer.take()
+            && handle
+                .update(cx, |_, window, _| window.remove_window())
+                .is_ok()
+        {
+            return;
+        }
+        let player = self.player.clone();
+        let shell = cx.entity().downgrade();
+        cx.defer(move |cx| {
+            let handle = crate::visualizer::open(player, cx);
+            shell.update(cx, |this, _| this.visualizer = handle).ok();
+        });
+    }
+
     fn set_page(&mut self, page: Page, cx: &mut Context<Self>) {
+        if page != Page::NowPlaying {
+            self.now_playing.update(cx, |n, cx| n.suspend(cx));
+        }
         self.page = page;
         Settings::update(cx, |s| s.page = page.key().into());
         cx.notify();
@@ -513,7 +546,9 @@ impl Shell {
         }
         on_shell!(OpenFile, |this, cx| this.open_file_dialog(cx));
         on_shell!(ToggleCompact, |this, cx| this.toggle_compact(cx));
+        on_shell!(ToggleVisualizer, |this, cx| this.toggle_visualizer(cx));
         on_shell!(ToggleTheme, |this, cx| this.toggle_theme(cx));
+        on_shell!(GoNowPlaying, |this, cx| this.set_page(Page::NowPlaying, cx));
         on_shell!(GoExplore, |this, cx| this.set_page(Page::RadioExplore, cx));
         on_shell!(GoFavorites, |this, cx| this
             .set_page(Page::RadioFavorites, cx));
@@ -599,6 +634,10 @@ impl Shell {
                         )
                         .child(div().font_semibold().child("Ondes")),
                 ),
+            )
+            .child(
+                SidebarGroup::new("Écoute")
+                    .child(SidebarMenu::new().children([self.nav_item(Page::NowPlaying, cx)])),
             )
             .child(
                 SidebarGroup::new("Radios").child(SidebarMenu::new().children([
@@ -692,13 +731,21 @@ impl Shell {
             .gap_4()
             .child(quick_open)
             .child(div().text_xl().font_semibold().child(self.page.title()))
-            .child(match self.page {
-                Page::RadioExplore => self.explore.clone().into_any_element(),
-                Page::RadioFavorites => self.favorites.clone().into_any_element(),
-                Page::LibraryTracks => self.tracks.clone().into_any_element(),
-                Page::LibraryAlbums => self.albums.clone().into_any_element(),
-                Page::LibraryArtists => self.artists.clone().into_any_element(),
-                Page::LibraryFolders => self.folders.clone().into_any_element(),
+            // Pages en cache : redessinées seulement quand elles changent, et non
+            // à chaque image du spectre de la barre de lecture.
+            .child({
+                let style = || StyleRefinement::default().size_full().min_h_0();
+                match self.page {
+                    Page::NowPlaying => self.now_playing.clone().cached(style()).into_any_element(),
+                    Page::RadioExplore => self.explore.clone().cached(style()).into_any_element(),
+                    Page::RadioFavorites => {
+                        self.favorites.clone().cached(style()).into_any_element()
+                    }
+                    Page::LibraryTracks => self.tracks.clone().cached(style()).into_any_element(),
+                    Page::LibraryAlbums => self.albums.clone().cached(style()).into_any_element(),
+                    Page::LibraryArtists => self.artists.clone().cached(style()).into_any_element(),
+                    Page::LibraryFolders => self.folders.clone().cached(style()).into_any_element(),
+                }
             })
     }
 }
