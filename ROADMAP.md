@@ -110,16 +110,19 @@ Principes :
 - [x] Morceau illisible dans la file : notification et passage au suivant
 - [x] Journal dans `~/.local/share/ondes/ondes.log` (session précédente en `.1`), plantages consignés avec trace
 - [x] Paquets `.deb` et AppImage (`cargo-packager`, `Packager.toml`), icône, fichier `.desktop` (types audio, playlists)
-- [x] CI de release (étiquette `v*`) : `.deb`/AppImage, `.dmg`, installeur NSIS — **non éprouvée** sous macOS et Windows
+- [x] CI de release (étiquette `v*`) : `.deb`/AppImage, `.dmg` (Apple Silicon), installeur NSIS — v0.2.0 publiée
+- [x] Windows : exe sans console (manifeste, icône, CRT statique), touches multimédia (SMTC), test de démarrage en CI — validé à la main
+- [ ] macOS : `.dmg` jamais testé, pas de build Intel
 - [x] Page « À propos » : version, crédits, dossiers de données, licences des 617 dépendances (`scripts/third-party.py`)
 - [x] Licence du projet : `LICENSE-MIT` et `LICENSE-APACHE`
 - [ ] Flatpak — nécessite `flatpak-builder` et des sources Cargo vendorisées (`flatpak-cargo-generator`)
-- [ ] Mise à jour automatique — nécessite un dépôt public où publier les versions
+- [x] Mises à jour : vérification de la dernière release GitHub au démarrage (une fois par jour, désactivable) ou à la demande (palette, « À propos »), notification avec lien de téléchargement — pas d'installation automatique (le `.deb` demande root, les autres formats des paquets signés)
 - [x] Installation du `.deb`, AppImage, passage d'un morceau illisible, « À propos » — validés à la main
 
 ### Backlog
-- Flatpak (Flathub) et mise à jour automatique (voir phase 5)
-- Builds macOS / Windows à vérifier (CI de release en place)
+- Flatpak (Flathub) (voir phase 5)
+- Installation automatique des mises à jour (`cargo-packager-updater`, paquets signés) pour AppImage, NSIS et `.dmg`
+- Build macOS à vérifier, build Intel ou universel
 - Icône dans la zone de notification (`tray-icon`) pour les bureaux qui en ont une
 - Titres ICY des flux Radio France (pas d'ICY : API dédiée à étudier)
 - Flux HLS (m3u8)

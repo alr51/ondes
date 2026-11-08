@@ -70,16 +70,28 @@ pub fn open(window: &mut Window, cx: &mut App) {
                                 .child(format!("Journal : {}", log.display())),
                         )
                         .child(
-                            h_flex().gap_2().child(
-                                Button::new("open-data-dir")
-                                    .icon(IconName::FolderOpen)
-                                    .label("Ouvrir le dossier des données")
-                                    .outline()
-                                    .small()
-                                    .on_click(move |_, _, cx| {
-                                        cx.open_url(&format!("file://{}", data_dir.display()));
-                                    }),
-                            ),
+                            h_flex()
+                                .gap_2()
+                                .child(
+                                    Button::new("open-data-dir")
+                                        .icon(IconName::FolderOpen)
+                                        .label("Ouvrir le dossier des données")
+                                        .outline()
+                                        .small()
+                                        .on_click(move |_, _, cx| {
+                                            cx.open_url(&format!("file://{}", data_dir.display()));
+                                        }),
+                                )
+                                .child(
+                                    Button::new("check-updates")
+                                        .icon(IconName::Download)
+                                        .label("Rechercher les mises à jour")
+                                        .outline()
+                                        .small()
+                                        .on_click(|_, window, cx| {
+                                            crate::update::check(true, window, cx)
+                                        }),
+                                ),
                         )
                         .child(
                             div()

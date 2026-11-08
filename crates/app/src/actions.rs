@@ -27,6 +27,8 @@ gpui_kit::actions!(
         OpenFile,
         ToggleTheme,
         ToggleNotifications,
+        CheckUpdates,
+        ToggleUpdateCheck,
         About,
         GoExplore,
         GoFavorites,
@@ -169,6 +171,18 @@ pub fn palette() -> Vec<(&'static str, Vec<PaletteEntry>)> {
                     Bell,
                     ToggleNotifications,
                     ["notification"]
+                ),
+                entry!(
+                    "Rechercher les mises à jour",
+                    Download,
+                    CheckUpdates,
+                    ["mise à jour", "update", "version"]
+                ),
+                entry!(
+                    "Activer / désactiver la vérification des mises à jour",
+                    RefreshCw,
+                    ToggleUpdateCheck,
+                    ["mise à jour", "update"]
                 ),
                 entry!(
                     "À propos d'Ondes",

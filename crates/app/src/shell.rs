@@ -264,6 +264,7 @@ impl Shell {
             });
         }
         shell.check_runtime(cx);
+        crate::update::check_on_startup(window, cx);
         if let Some(spec) = initial {
             shell.play(spec, cx);
         }
@@ -429,6 +430,21 @@ impl Shell {
                     cx,
                 ),
             }
+        });
+        with_window!(CheckUpdates, |_this, window, cx| crate::update::check(
+            true, window, cx
+        ));
+        with_window!(ToggleUpdateCheck, |_this, window, cx| {
+            let enabled = !Settings::get(cx).check_updates;
+            Settings::update(cx, |s| s.check_updates = enabled);
+            window.push_notification(
+                Notification::info(if enabled {
+                    "Vérification des mises à jour activée"
+                } else {
+                    "Vérification des mises à jour désactivée"
+                }),
+                cx,
+            );
         });
         with_window!(ToggleNotifications, |_this, window, cx| {
             let enabled = !Settings::get(cx).notifications;

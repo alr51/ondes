@@ -18,6 +18,7 @@ mod settings;
 mod shell;
 mod station_row;
 mod system;
+mod update;
 
 use gpui_kit::assets::AllAssets;
 use gpui_kit::*;

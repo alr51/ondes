@@ -1,7 +1,7 @@
 //! État persistant entre deux lancements : `~/.local/share/ondes/state.toml`.
 //!
 //! Volume, dernière source écoutée, page, thème, fenêtre, aléatoire et
-//! répétition, notifications. Écrit avec un léger délai après chaque
+//! répétition, notifications, mises à jour. Écrit avec un léger délai après chaque
 //! changement (et de façon atomique) pour ne pas solliciter le disque.
 
 use std::path::PathBuf;
@@ -52,6 +52,10 @@ pub struct AppState {
     pub shuffle: bool,
     pub repeat: String,
     pub notifications: bool,
+    /// Vérifie au démarrage si une version plus récente est publiée.
+    pub check_updates: bool,
+    /// Dernière vérification réussie (secondes Unix).
+    pub last_update_check: Option<u64>,
     pub window: Option<WindowState>,
     pub last: Option<LastSource>,
 }
@@ -65,6 +69,8 @@ impl Default for AppState {
             shuffle: false,
             repeat: "off".into(),
             notifications: true,
+            check_updates: true,
+            last_update_check: None,
             window: None,
             last: None,
         }
@@ -173,6 +179,7 @@ mod tests {
         let old: AppState = toml::from_str("volume = 0.5\n").unwrap();
         assert_eq!(old.volume, 0.5);
         assert!(old.notifications);
+        assert!(old.check_updates);
         assert_eq!(old.last, None);
     }
 }
