@@ -1,13 +1,17 @@
 name: Paquets
 
-# Construit les paquets à chaque push sur main (artefacts téléchargeables
-# depuis l'onglet Actions, pour tester avant de publier) et les publie dans
-# une release GitHub quand une étiquette `v*` est poussée.
+# Construit les paquets à la demande (bouton « Run workflow » de l'onglet
+# Actions : artefacts téléchargeables pour tester avant de publier) et les
+# publie dans une release GitHub quand une étiquette `v*` est poussée.
+# Plus lancé à chaque push sur main : le job macOS coûte 10× les minutes Linux.
 on:
   push:
-    branches: [main]
     tags: ["v*"]
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 permissions:
   contents: write
@@ -25,6 +29,7 @@ jobs:
           - os: windows-latest
             formats: nsis
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - name: Dépendances système (Linux)
@@ -37,7 +42,10 @@ jobs:
             libasound2-dev pkg-config libfuse2
       - run: rustup show active-toolchain
       - uses: Swatinem/rust-cache@v2
-      - run: cargo install cargo-packager --locked
+      # Binaire précompilé si disponible, au lieu de le recompiler à chaque run.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-packager
       - run: cargo packager --release --formats ${{ matrix.formats }}
       - uses: actions/upload-artifact@v4
         with:

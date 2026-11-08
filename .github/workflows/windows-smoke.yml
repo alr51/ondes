@@ -7,7 +7,19 @@ name: Windows (démarrage)
 on:
   push:
     branches: [main]
+    paths:
+      - "**.rs"
+      - "**/Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".cargo/**"
+      - "packaging/windows/**"
+      - ".github/workflows/windows-smoke.yml"
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -15,6 +27,7 @@ env:
 jobs:
   smoke:
     runs-on: windows-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - run: rustup show active-toolchain
