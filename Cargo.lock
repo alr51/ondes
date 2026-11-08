@@ -4722,7 +4722,7 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
 name = "ondes"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4752,7 +4752,7 @@ dependencies = [
 
 [[package]]
 name = "ondes-audio"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "flume",
  "ondes-sources",
@@ -4764,7 +4764,7 @@ dependencies = [
 
 [[package]]
 name = "ondes-core"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "thiserror 2.0.21",
  "tokio",
@@ -4773,7 +4773,7 @@ dependencies = [
 
 [[package]]
 name = "ondes-library"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "image",
  "lofty",
@@ -4787,7 +4787,7 @@ dependencies = [
 
 [[package]]
 name = "ondes-radio"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "ondes-sources",
  "reqwest",
@@ -4801,7 +4801,7 @@ dependencies = [
 
 [[package]]
 name = "ondes-sources"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "bytes",
  "flume",
