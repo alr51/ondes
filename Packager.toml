@@ -2,7 +2,7 @@
 # (.deb et AppImage sous Linux, .dmg sous macOS, .msi/NSIS sous Windows).
 name = "ondes"
 productName = "Ondes"
-version = "0.2.0"
+version = "0.2.1"
 identifier = "io.github.alr51.ondes"
 homepage = "https://github.com/alr51/ondes"
 description = "Webradios et musique locale"
