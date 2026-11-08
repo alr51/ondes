@@ -1,8 +1,7 @@
 //! Résolution minimale des playlists de stations (M3U, PLS).
 //!
 //! Beaucoup de radios publient une URL `.m3u` ou `.pls` qui pointe vers le
-//! vrai flux. On ne garde que la première URL http(s). L'import complet de
-//! playlists est prévu en phase 2.
+//! vrai flux. Les playlists HLS (`#EXT-X-…`) sont lues par le module `hls`.
 
 use crate::SourceError;
 
@@ -54,7 +53,7 @@ pub fn parse_entries(kind: PlaylistKind, body: &str) -> Result<Vec<PlaylistEntry
     let entries = match kind {
         PlaylistKind::M3u => {
             if body.contains("#EXT-X-") {
-                return Err(SourceError::HlsUnsupported);
+                return Err(SourceError::HlsPlaylist);
             }
             let mut entries = Vec::new();
             let mut title = None;
@@ -220,7 +219,7 @@ mod tests {
     fn rejects_hls_and_empty() {
         assert!(matches!(
             first_stream_url(PlaylistKind::M3u, "#EXTM3U\n#EXT-X-VERSION:3\nseg.ts\n"),
-            Err(SourceError::HlsUnsupported)
+            Err(SourceError::HlsPlaylist)
         ));
         assert!(matches!(
             first_stream_url(PlaylistKind::Pls, "[playlist]\n"),

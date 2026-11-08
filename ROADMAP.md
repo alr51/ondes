@@ -71,7 +71,7 @@ Principes :
 - [x] Décodage sur thread séparé + file d'échantillons : la sortie ne bloque jamais (silence + « mise en tampon »)
 - [x] Lecture d'un fichier local : boîte de dialogue, glisser-déposer, `ondes <fichier>`
 - [x] Lecture d'une URL de flux HTTP (MP3/AAC/OGG), prébuffer 2 s, reconnexion automatique (5 essais)
-- [x] Résolution des URL `.pls` / `.m3u` vers le flux (HLS refusé proprement)
+- [x] Résolution des URL `.pls` / `.m3u` vers le flux
 - [x] Barre de lecture branchée : titre, état, position/durée, stop, play/pause, volume
 - [x] Pause/reprise d'un direct, boîte de dialogue fichier (portail XDG) — validés à la main
 - **Livrable** : on colle une URL de radio ou on ouvre un fichier, et ça joue.
@@ -84,6 +84,7 @@ Principes :
 - [x] Métadonnées ICY : titre en cours, affiché au moment où il devient audible
 - [x] Import `.m3u` / `.pls` (titres conservés, doublons ignorés)
 - [x] Comptage des écoutes Radio Browser (recommandé par l'API)
+- [x] Flux HLS (`.m3u8`) : choix de la variante audio (ou de la piste audio séparée), relecture de la playlist au fil du direct, segments MPEG-TS (démultiplexeur maison), AAC/MP3 bruts ou fMP4 — flux chiffrés refusés — validé à la main (FIP, RTL)
 - [x] Recherche, filtres, défilement infini, favoris, ajout manuel, import — validés à la main
 - **Livrable** : parcourir, chercher et mettre en favori des milliers de stations.
 
@@ -125,7 +126,6 @@ Principes :
 - Build macOS à vérifier, build Intel ou universel
 - Icône dans la zone de notification (`tray-icon`) pour les bureaux qui en ont une
 - Titres ICY des flux Radio France (pas d'ICY : API dédiée à étudier)
-- Flux HLS (m3u8)
 - Égaliseur, ReplayGain, fondu enchaîné
 - Enregistrement d'un flux dans un fichier
 - Visualiseur (FFT, `rustfft`)

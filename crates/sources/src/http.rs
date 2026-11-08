@@ -14,6 +14,7 @@ use futures_util::StreamExt;
 use reqwest::header::{CONTENT_LENGTH, CONTENT_TYPE, HeaderMap};
 use tokio::runtime::Handle;
 
+use crate::hls;
 use crate::icy::IcyDemuxer;
 use crate::playlist::{PlaylistKind, first_stream_url};
 use crate::{Opened, SourceError};
@@ -54,7 +55,7 @@ pub enum StreamStatus {
     Title(String),
 }
 
-type StatusFn = Arc<dyn Fn(StreamStatus) + Send + Sync>;
+pub(crate) type StatusFn = Arc<dyn Fn(StreamStatus) + Send + Sync>;
 
 const MAX_PLAYLIST_DEPTH: usize = 3;
 const MAX_PLAYLIST_BYTES: usize = 256 * 1024;
@@ -62,7 +63,8 @@ const MAX_PLAYLIST_BYTES: usize = 256 * 1024;
 /// Ouvre un flux HTTP(S). Fonction **bloquante** : à appeler depuis un
 /// thread ordinaire, jamais depuis un thread du runtime tokio.
 ///
-/// Les playlists `.m3u` / `.pls` sont résolues vers leur premier flux.
+/// Les playlists `.m3u` / `.pls` sont résolues vers leur premier flux ; les
+/// playlists HLS (`.m3u8`) sont lues segment par segment.
 pub fn open_stream(
     handle: &Handle,
     url: &str,
@@ -78,7 +80,11 @@ pub fn open_stream(
         .build()
         .map_err(|e| SourceError::Network(e.to_string()))?;
 
-    let (resp, stream_url) = handle.block_on(connect(&client, url))?;
+    let status: StatusFn = Arc::new(on_status);
+    let (resp, stream_url) = match handle.block_on(connect(&client, url))? {
+        Target::Direct(resp, stream_url) => (resp, stream_url),
+        Target::Hls { url, body } => return hls::open(handle, client, url, &body, status),
+    };
 
     let headers = resp.headers();
     let mime = mime_of(headers);
@@ -99,16 +105,10 @@ pub fn open_stream(
     tracing::info!(%stream_url, ?mime, live, "flux ouvert");
 
     let (tx, rx) = flume::bounded(opts.buffer_chunks.max(1));
-    let status: StatusFn = Arc::new(on_status);
     let task = handle.spawn(pump(client, stream_url, resp, tx, live, opts, status));
 
     Ok(Opened {
-        reader: Box::new(HttpReader {
-            rx,
-            current: Bytes::new(),
-            pos: 0,
-            task: task.abort_handle(),
-        }),
+        reader: Box::new(HttpReader::new(rx, task.abort_handle())),
         title,
         hint,
         mime,
@@ -117,11 +117,16 @@ pub fn open_stream(
     })
 }
 
+/// Résultat de la connexion.
+enum Target {
+    /// Flux audio continu, et son URL finale.
+    Direct(reqwest::Response, String),
+    /// Playlist HLS, déjà téléchargée.
+    Hls { url: String, body: String },
+}
+
 /// Requête GET, en suivant les playlists jusqu'au vrai flux audio.
-async fn connect(
-    client: &reqwest::Client,
-    url: &str,
-) -> Result<(reqwest::Response, String), SourceError> {
+async fn connect(client: &reqwest::Client, url: &str) -> Result<Target, SourceError> {
     let mut url = url.to_string();
     for _ in 0..MAX_PLAYLIST_DEPTH {
         let resp = client
@@ -141,14 +146,21 @@ async fn connect(
 
         if let Some(kind) = PlaylistKind::detect(mime.as_deref(), &final_url) {
             let body = read_limited(resp, MAX_PLAYLIST_BYTES).await?;
-            url = first_stream_url(kind, &String::from_utf8_lossy(&body))?;
+            let body = String::from_utf8_lossy(&body);
+            if kind == PlaylistKind::M3u && hls::is_hls(&body) {
+                return Ok(Target::Hls {
+                    url: final_url,
+                    body: body.into_owned(),
+                });
+            }
+            url = first_stream_url(kind, &body)?;
             tracing::debug!(%url, "playlist résolue");
             continue;
         }
 
         return match mime.as_deref() {
-            None => Ok((resp, final_url)),
-            Some(m) if is_audio_mime(m) => Ok((resp, final_url)),
+            None => Ok(Target::Direct(resp, final_url)),
+            Some(m) if is_audio_mime(m) => Ok(Target::Direct(resp, final_url)),
             Some(m) => Err(SourceError::NotAudio(m.to_string())),
         };
     }
@@ -215,9 +227,12 @@ async fn pump(
             return;
         }
         match connect(&client, &url).await {
-            Ok((r, _)) => {
+            Ok(Target::Direct(r, _)) => {
                 status(StreamStatus::Reconnected);
                 resp = Some(r);
+            }
+            Ok(Target::Hls { .. }) => {
+                tracing::debug!(%url, "le flux est devenu une playlist HLS");
             }
             Err(e) => tracing::debug!(%url, error = %e, "échec de reconnexion"),
         }
@@ -282,7 +297,7 @@ async fn forward(resp: reqwest::Response, tx: &flume::Sender<Bytes>, status: &St
 }
 
 /// Erreur réseau en français, d'après sa cause (DNS, délai, TLS…).
-fn network_error(e: &reqwest::Error) -> SourceError {
+pub(crate) fn network_error(e: &reqwest::Error) -> SourceError {
     // Le détail utile est souvent au fond de la chaîne des causes.
     let mut chain = e.to_string();
     let mut source = std::error::Error::source(e);
@@ -319,17 +334,28 @@ fn describe_network_error(chain: &str, timeout: bool, connect: bool) -> String {
     }
 }
 
-fn backoff(attempt: u32) -> Duration {
+pub(crate) fn backoff(attempt: u32) -> Duration {
     let ms = 500u64.saturating_mul(1 << attempt.saturating_sub(1).min(4));
     Duration::from_millis(ms.min(8_000))
 }
 
 /// Lecteur bloquant alimenté par la tâche réseau.
-struct HttpReader {
+pub(crate) struct HttpReader {
     rx: flume::Receiver<Bytes>,
     current: Bytes,
     pos: u64,
     task: tokio::task::AbortHandle,
+}
+
+impl HttpReader {
+    pub(crate) fn new(rx: flume::Receiver<Bytes>, task: tokio::task::AbortHandle) -> Self {
+        Self {
+            rx,
+            current: Bytes::new(),
+            pos: 0,
+            task,
+        }
+    }
 }
 
 impl Read for HttpReader {
@@ -609,6 +635,47 @@ mod tests {
         opened.reader.read_exact(&mut got).unwrap();
         assert_eq!(&got, b"abcdefgh");
         assert_eq!(*titles.lock().unwrap(), vec!["Artiste - Titre".to_string()]);
+    }
+
+    #[test]
+    fn plays_live_hls_with_playlist_refresh() {
+        let seg1 = crate::ts::tests::segment(0x0f, b"segment-1;");
+        let seg2 = crate::ts::tests::segment(0x0f, b"segment-2");
+        let (rt, base) = serve(|base| {
+            let hls = "Content-Type: application/vnd.apple.mpegurl\r\n";
+            let ts = "Content-Type: video/mp2t\r\n";
+            vec![
+                response(
+                    hls,
+                    format!("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1,CODECS=\"mp4a.40.2\"\n{base}/a.m3u8\n")
+                        .as_bytes(),
+                ),
+                // Direct : un seul segment pour l'instant…
+                response(
+                    hls,
+                    b"#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXT-X-MEDIA-SEQUENCE:7\n#EXTINF:1,\ns7.ts\n",
+                ),
+                response(ts, &seg1),
+                // …puis la playlist relue en annonce un second, et se termine.
+                response(
+                    hls,
+                    b"#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXT-X-MEDIA-SEQUENCE:7\n#EXTINF:1,\ns7.ts\n#EXTINF:1,\ns8.ts\n#EXT-X-ENDLIST\n",
+                ),
+                response(ts, &seg2),
+            ]
+        });
+        let mut opened = open_stream(
+            rt.handle(),
+            &format!("{base}/live.m3u8"),
+            fast_opts(),
+            |_| {},
+        )
+        .unwrap();
+        assert!(opened.live);
+        assert_eq!(opened.hint.as_deref(), Some("aac"));
+        let mut got = Vec::new();
+        opened.reader.read_to_end(&mut got).unwrap();
+        assert_eq!(got, b"segment-1;segment-2");
     }
 
     #[test]

@@ -4,10 +4,12 @@
 //! prêt à être décodé, plus quelques indications (format, titre, direct ou
 //! non). Le décodage lui-même est fait par `ondes-audio`.
 
+mod hls;
 mod http;
 mod icy;
 mod local;
 mod playlist;
+mod ts;
 
 use std::io::{Read, Seek};
 use std::path::PathBuf;
@@ -113,8 +115,10 @@ pub enum SourceError {
     EmptyPlaylist,
     #[error("trop de redirections de playlist")]
     PlaylistLoop,
-    #[error("les flux HLS (m3u8) ne sont pas encore pris en charge")]
-    HlsUnsupported,
+    #[error("playlist HLS : c'est un flux, à ajouter par son URL")]
+    HlsPlaylist,
+    #[error("flux HLS : {0}")]
+    Hls(String),
 }
 
 #[cfg(test)]
