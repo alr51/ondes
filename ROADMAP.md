@@ -137,6 +137,25 @@ Principes :
 - Titres ICY des flux Radio France (pas d'ICY : API dédiée à étudier)
 - Historique des titres entendus
 - Minuteur de mise en veille
+- Édition des enregistrements de directs :
+  - découpage sans réencodage (début / fin, découpe en plusieurs morceaux), aux frontières de trames MP3 / ADTS ;
+  - découpe proposée d'après les changements de titre ICY notés pendant l'enregistrement ;
+  - tags (titre, artiste, album, année, pochette) avec `lofty` ;
+  - AAC brut (ADTS) : pas de tags possibles, remuxer en `.m4a` pour les porter.
+- Fiche artiste : informations et discographie
+  - accessible depuis la bibliothèque (vue Artistes), le morceau en cours et le titre ICY d'une radio ;
+  - discographie (albums, singles, années) via MusicBrainz (gratuit, sans clé, 1 requête/s, User-Agent obligatoire), pochettes via Cover Art Archive ;
+  - biographie et photo via Wikidata / Wikipédia (en français si disponible) ;
+  - albums déjà présents dans la bibliothèque mis en évidence ; cache disque des réponses.
+- Visualiseurs par shaders, animés par le spectre (FFT déjà calculée par `ondes-audio`)
+  - vue plein écran (ou fenêtre à part) avec plusieurs effets au choix, pochette éventuellement intégrée ;
+  - entrées des shaders : bandes du spectre, niveau global, détection des temps forts, temps écoulé ;
+  - shaders WGSL rendus avec `wgpu` (déjà dans l'arbre via GPUI) ;
+  - obstacle : GPUI n'expose pas de shaders personnalisés. Pistes : rendu hors écran puis affichage comme image (copie GPU → CPU à chaque image), fenêtre `wgpu` dédiée, ou contribution à GPUI.
+- Vue compacte du lecteur : petite fenêtre (option « toujours au-dessus »), bascule depuis la fenêtre principale et retour
+  - modes d'affichage au choix : pochette et titre, spectre, visualiseur (shaders), titre ICY de la radio, mini file d'attente ;
+  - commandes essentielles (lecture, suivant, volume, favori, enregistrement) ;
+  - mode, taille et position mémorisés dans `state.toml`.
 
 ## Risques
 1. **GPUI et GPUI Kit évoluent vite** (0.6 → 0.9 en peu de temps) : versions fixées avec `=`, montées de version groupées.
