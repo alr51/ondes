@@ -7,6 +7,13 @@ automatiquement). Avant de publier une version, renommer la section
 
 ## [Non publié]
 
+### Vue compacte
+Une petite fenêtre du lecteur, pour écouter sans la fenêtre principale : bouton à côté du volume dans la barre de lecture, palette de commandes ou **Ctrl+Maj+M**. La fenêtre principale est réduite et revient quand la vue compacte est fermée.
+
+- Quatre modes d'affichage : pochette (ou logo de la radio), spectre, titre en grand, file d'attente.
+- Lecture, morceau précédent et suivant, volume, favori et enregistrement de la radio.
+- Le mode choisi, la taille et la position de la fenêtre sont mémorisés.
+
 ## [0.4.0] — 2026-11-08
 
 ### Réglages audio

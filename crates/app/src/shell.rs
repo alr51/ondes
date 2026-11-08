@@ -121,6 +121,9 @@ pub struct Shell {
     /// Champ « URL ou chemin » de la barre d'ouverture rapide.
     location: Entity<InputState>,
     palette: Entity<CommandState>,
+    /// Fenêtre principale, et vue compacte si elle est ouverte.
+    main_window: AnyWindowHandle,
+    compact: Option<AnyWindowHandle>,
     _system: Entity<System>,
     _subscriptions: Vec<Subscription>,
 }
@@ -259,6 +262,8 @@ impl Shell {
             folders,
             location,
             palette,
+            main_window: window.window_handle(),
+            compact: None,
             _system: system,
             _subscriptions: subscriptions,
         };
@@ -272,6 +277,8 @@ impl Shell {
                     crate::about::open(window, cx);
                 } else if what == "audio" {
                     crate::audio_settings::open(this.player.clone(), window, cx);
+                } else if what == "compact" {
+                    this.toggle_compact(cx);
                 } else {
                     this.open_palette(window, cx);
                 }
@@ -375,6 +382,25 @@ impl Shell {
             cx,
         );
         Settings::update(cx, |s| s.dark = Some(dark));
+    }
+
+    /// Bascule entre la fenêtre principale et la vue compacte.
+    fn toggle_compact(&mut self, cx: &mut Context<Self>) {
+        if let Some(handle) = self.compact.take()
+            && handle
+                .update(cx, |_, window, _| window.remove_window())
+                .is_ok()
+        {
+            return;
+        }
+        let (player, main) = (self.player.clone(), self.main_window);
+        let shell = cx.entity().downgrade();
+        // Après l'action en cours : ouvrir une fenêtre pendant une mise à jour
+        // d'entité n'est pas sûr.
+        cx.defer(move |cx| {
+            let handle = crate::compact::open(player, main, cx);
+            shell.update(cx, |this, _| this.compact = handle).ok();
+        });
     }
 
     fn set_page(&mut self, page: Page, cx: &mut Context<Self>) {
@@ -486,6 +512,7 @@ impl Shell {
             }};
         }
         on_shell!(OpenFile, |this, cx| this.open_file_dialog(cx));
+        on_shell!(ToggleCompact, |this, cx| this.toggle_compact(cx));
         on_shell!(ToggleTheme, |this, cx| this.toggle_theme(cx));
         on_shell!(GoExplore, |this, cx| this.set_page(Page::RadioExplore, cx));
         on_shell!(GoFavorites, |this, cx| this

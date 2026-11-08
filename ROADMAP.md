@@ -128,6 +128,8 @@ Principes :
 - [x] Enregistrement d'un direct (MP3/AAC/HLS, sans réencodage) dans `Musique/Ondes`, Ctrl+Maj+R
 - [x] Fenêtre « Réglages audio » (barre latérale, palette, Ctrl+,)
 - [x] Égaliseur, ReplayGain, fondu, spectre, enregistrement — validés à la main
+- [x] Vue compacte : petite fenêtre du lecteur (fenêtre principale réduite), modes pochette / logo, spectre, titre, file d'attente ; commandes, volume, favori, enregistrement ; mode et position mémorisés — Ctrl+Maj+M, bouton de la barre de lecture — validée à la main
+- [ ] « Toujours au-dessus » pour la vue compacte — GPUI ne le permet pas (pas d'état `_NET_WM_STATE_ABOVE`)
 
 ### Backlog
 - Flatpak (Flathub) (voir phase 5)
@@ -152,10 +154,6 @@ Principes :
   - entrées des shaders : bandes du spectre, niveau global, détection des temps forts, temps écoulé ;
   - shaders WGSL rendus avec `wgpu` (déjà dans l'arbre via GPUI) ;
   - obstacle : GPUI n'expose pas de shaders personnalisés. Pistes : rendu hors écran puis affichage comme image (copie GPU → CPU à chaque image), fenêtre `wgpu` dédiée, ou contribution à GPUI.
-- Vue compacte du lecteur : petite fenêtre (option « toujours au-dessus »), bascule depuis la fenêtre principale et retour
-  - modes d'affichage au choix : pochette et titre, spectre, visualiseur (shaders), titre ICY de la radio, mini file d'attente ;
-  - commandes essentielles (lecture, suivant, volume, favori, enregistrement) ;
-  - mode, taille et position mémorisés dans `state.toml`.
 
 ## Risques
 1. **GPUI et GPUI Kit évoluent vite** (0.6 → 0.9 en peu de temps) : versions fixées avec `=`, montées de version groupées.

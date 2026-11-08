@@ -120,7 +120,7 @@ impl PlayerBar {
 }
 
 /// Sous-titre : état de la lecture, ou erreur.
-enum Status {
+pub(crate) enum Status {
     Hint(String),
     /// Titre en cours d'une radio, ou artiste et album d'un morceau.
     Info(String),
@@ -128,7 +128,7 @@ enum Status {
     Error(String),
 }
 
-fn status(p: &Player) -> Status {
+pub(crate) fn status(p: &Player) -> Status {
     if let Some(err) = &p.error {
         return Status::Error(err.clone());
     }
@@ -451,6 +451,16 @@ impl Render for PlayerBar {
                     .gap_2()
                     .items_center()
                     .child(div().mr_2().child(self.spectrum.clone()))
+                    .child(
+                        Button::new("compact")
+                            .icon(IconName::PictureInPicture2)
+                            .ghost()
+                            .small()
+                            .tooltip("Vue compacte (Ctrl+Maj+M)")
+                            .on_click(|_, window, cx| {
+                                window.dispatch_action(Box::new(crate::actions::ToggleCompact), cx)
+                            }),
+                    )
                     .child(
                         div()
                             .text_color(theme.muted_foreground)

@@ -85,6 +85,15 @@ impl Queue {
         self.items.get(self.order[next])
     }
 
+    /// Les `n` prochains morceaux dans l'ordre de lecture (sans reboucler).
+    pub fn upcoming(&self, n: usize) -> impl Iterator<Item = &Track> {
+        self.order
+            .iter()
+            .skip(self.pos + 1)
+            .take(n)
+            .filter_map(|&i| self.items.get(i))
+    }
+
     /// Passe au morceau suivant. `auto` : fin naturelle du morceau
     /// (« répéter un » rejoue alors le même). `None` en fin de file.
     pub fn next(&mut self, auto: bool) -> Option<&Track> {

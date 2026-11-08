@@ -23,6 +23,7 @@ gpui_kit::actions!(
         CycleRepeat,
         ToggleRecording,
         OpenAudioSettings,
+        ToggleCompact,
         ToggleFavorite,
         OpenPalette,
         FocusLocation,
@@ -55,6 +56,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("ctrl-r", CycleRepeat, None),
         KeyBinding::new("ctrl-d", ToggleFavorite, None),
         KeyBinding::new("ctrl-shift-r", ToggleRecording, None),
+        KeyBinding::new("ctrl-shift-m", ToggleCompact, None),
         KeyBinding::new("ctrl-,", OpenAudioSettings, None),
         KeyBinding::new("ctrl-k", OpenPalette, None),
         KeyBinding::new("ctrl-shift-p", OpenPalette, None),
@@ -130,6 +132,12 @@ pub fn palette() -> Vec<(&'static str, Vec<PaletteEntry>)> {
                     CircleDot,
                     ToggleRecording,
                     ["enregistrer", "record", "capture"]
+                ),
+                entry!(
+                    "Vue compacte / fenêtre principale",
+                    PictureInPicture2,
+                    ToggleCompact,
+                    ["compact", "mini", "réduire", "petit"]
                 ),
                 entry!(
                     "Réglages audio…",

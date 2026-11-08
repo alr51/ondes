@@ -102,6 +102,24 @@ impl AudioSettings {
     }
 }
 
+/// Vue compacte du lecteur.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CompactState {
+    /// `cover`, `spectrum`, `title` ou `queue`.
+    pub mode: String,
+    pub window: Option<WindowState>,
+}
+
+impl Default for CompactState {
+    fn default() -> Self {
+        Self {
+            mode: "cover".into(),
+            window: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppState {
@@ -119,6 +137,7 @@ pub struct AppState {
     pub window: Option<WindowState>,
     pub last: Option<LastSource>,
     pub audio: AudioSettings,
+    pub compact: CompactState,
 }
 
 impl Default for AppState {
@@ -135,6 +154,7 @@ impl Default for AppState {
             window: None,
             last: None,
             audio: AudioSettings::default(),
+            compact: CompactState::default(),
         }
     }
 }

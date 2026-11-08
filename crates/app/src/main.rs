@@ -4,6 +4,7 @@
 mod about;
 mod actions;
 mod audio_settings;
+mod compact;
 mod library;
 mod library_view;
 mod logos;
