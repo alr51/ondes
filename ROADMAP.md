@@ -135,6 +135,7 @@ Principes :
 - [x] Page « En cours » dans la fenêtre principale (Ctrl+0) : mêmes modes que la vue compacte (pochette / logo, spectre, visualiseur, titre, file d'attente), composant partagé `stage.rs` ; le visualiseur s'arrête quand on quitte la page
 - [x] Visualiseurs et page « En cours » — validés à la main
 - [ ] « Toujours au-dessus » pour la vue compacte — GPUI ne le permet pas (pas d'état `_NET_WM_STATE_ABOVE`)
+- [x] Visualiseur rendu jusqu'à 1920 px de large (800 auparavant)
 
 ### Backlog
 - Flatpak (Flathub) (voir phase 5)

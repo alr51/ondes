@@ -3,7 +3,7 @@
 //! GPUI ne permet pas d'insérer ses propres shaders dans son rendu : chaque
 //! image est donc rendue hors écran avec `wgpu`, sur un thread dédié, puis
 //! relue (BGRA) pour être affichée comme une image ordinaire. À 30 images
-//! par seconde et à résolution réduite, la copie reste négligeable.
+//! par seconde et à 1920 px de large au plus, la copie reste raisonnable.
 
 mod analysis;
 mod render;
@@ -30,8 +30,10 @@ pub const EFFECTS: &[(&str, &str)] = &[
 const PRELUDE: &str = include_str!("shaders/prelude.wgsl");
 /// Cadence visée.
 const FRAME_TIME: Duration = Duration::from_millis(33);
-/// Largeur maximale du rendu (l'image est agrandie à l'affichage).
-pub const MAX_WIDTH: u32 = 800;
+/// Largeur maximale du rendu (l'image est agrandie au-delà). 1920 px : net
+/// jusqu'au Full HD ; en plein écran sur 3440 px, la recopie coûterait
+/// environ 15 points de processeur de plus pour un gain peu visible.
+pub const MAX_WIDTH: u32 = 1920;
 
 #[derive(Debug, thiserror::Error)]
 pub enum VisualError {
@@ -220,7 +222,8 @@ mod tests {
 
     #[test]
     fn render_size_keeps_ratio_and_limits_width() {
-        assert_eq!(render_size(1600, 900), (800, 450));
+        assert_eq!(render_size(3840, 2160), (1920, 1080));
+        assert_eq!(render_size(1600, 900), (1600, 900));
         assert_eq!(render_size(301, 201), (300, 200));
         assert_eq!(render_size(0, 100), (0, 0));
     }

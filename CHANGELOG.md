@@ -20,6 +20,7 @@ Une nouvelle page **En cours** dans la fenêtre principale (barre latérale, pal
 
 ### Améliorations
 - Ondes consomme moins de processeur pendant la lecture : le spectre de la barre de lecture ne redessine plus toute la fenêtre à chaque image de l'écran.
+- Le visualiseur est plus net sur les grands écrans : les effets sont calculés jusqu'à 1920 pixels de large (800 auparavant).
 
 ## [0.5.0] — 2026-11-08
 
