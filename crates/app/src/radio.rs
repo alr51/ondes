@@ -5,7 +5,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use gpui_kit::*;
-use ondes_radio::{Favorites, RadioBrowser, Station};
+use ondes_radio::{Favorites, RadioBrowser, RadioFrance, Station};
 
 use crate::runtime::Rt;
 
@@ -32,6 +32,25 @@ impl Directory {
         if let (Some(rb), Some(uuid)) = (Self::get(cx), station.uuid.clone()) {
             drop(Rt::spawn(cx, async move { rb.count_click(&uuid).await }));
         }
+    }
+}
+
+/// Client des titres en cours de Radio France (API `livemeta`).
+#[derive(Clone)]
+pub struct RadioFranceApi(pub Arc<RadioFrance>);
+
+impl Global for RadioFranceApi {}
+
+impl RadioFranceApi {
+    pub fn init(cx: &mut App) {
+        match RadioFrance::new() {
+            Ok(rf) => cx.set_global(RadioFranceApi(Arc::new(rf))),
+            Err(e) => tracing::error!("client Radio France : {e}"),
+        }
+    }
+
+    pub fn get(cx: &App) -> Option<Arc<RadioFrance>> {
+        cx.try_global::<RadioFranceApi>().map(|d| d.0.clone())
     }
 }
 

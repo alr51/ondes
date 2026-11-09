@@ -15,7 +15,7 @@ use ondes_radio::{HistoryEntry, HistoryKind, Station};
 use crate::history::{self, HistoryModel};
 use crate::library::LibraryModel;
 use crate::queue::{Queue, Repeat};
-use crate::radio::Directory;
+use crate::radio::{Directory, RadioFranceApi};
 use crate::runtime::Rt;
 use crate::settings::{AudioSettings, LastSource, Settings};
 
@@ -56,6 +56,8 @@ pub struct Player {
     crossfade_same_album: bool,
     /// Le fichier en cours est déjà inscrit dans l'historique.
     logged: bool,
+    /// Suivi des titres d'une station Radio France (pas d'ICY sur leurs flux).
+    radio_france: Option<Task<()>>,
     _events: Task<()>,
 }
 
@@ -103,6 +105,7 @@ impl Player {
             recording: None,
             crossfade_same_album: audio.crossfade_same_album,
             logged: false,
+            radio_france: None,
             state: PlaybackState::Idle,
             track: None,
             station: None,
@@ -132,16 +135,16 @@ impl Player {
                 if state == PlaybackState::Playing {
                     self.failures_in_row = 0;
                 }
+                if matches!(state, PlaybackState::Idle | PlaybackState::Ended) {
+                    self.radio_france = None;
+                }
                 match state {
                     PlaybackState::Loading => self.error = None,
                     PlaybackState::Playing | PlaybackState::Idle => self.reconnecting = None,
                     _ => {}
                 }
             }
-            Event::NowPlaying(title) => {
-                self.log_radio(&title, cx);
-                self.now_playing = Some(title);
-            }
+            Event::NowPlaying(title) => self.announce(title, cx),
             Event::Track(track) => {
                 self.now_playing = None;
                 self.logged = false;
@@ -149,6 +152,7 @@ impl Player {
                 self.pending = None;
                 self.position = Duration::ZERO;
                 self.sync_next();
+                self.watch_radio_france(cx);
             }
             // Le moteur a enchaîné le morceau préchargé : la file avance aussi.
             Event::Advanced(track) => {
@@ -202,6 +206,79 @@ impl Player {
                 self.pending = None;
             }
         }
+    }
+
+    /// Titre annoncé par la radio (ICY, ou API Radio France).
+    fn announce(&mut self, title: String, cx: &mut Context<Self>) {
+        if self.now_playing.as_deref() == Some(title.as_str()) {
+            return;
+        }
+        self.log_radio(&title, cx);
+        self.now_playing = Some(title);
+        cx.notify();
+    }
+
+    /// Station Radio France en cours : son titre est demandé à leur API au
+    /// début de lecture, puis à la fin prévue de chaque morceau ou émission.
+    fn watch_radio_france(&mut self, cx: &mut Context<Self>) {
+        self.radio_france = None;
+        let Some(track) = self.track.as_ref().filter(|t| t.live) else {
+            return;
+        };
+        let spec_url = match &track.spec {
+            SourceSpec::Url(url) => Some(url.as_str()),
+            SourceSpec::File(_) => None,
+        };
+        let station_url = self.station.as_ref().map(|s| s.url.as_str());
+        let Some(id) = [spec_url, station_url]
+            .into_iter()
+            .flatten()
+            .find_map(ondes_radio::radio_france_station)
+        else {
+            return;
+        };
+        let Some(api) = RadioFranceApi::get(cx) else {
+            return;
+        };
+        tracing::info!(id, "titres Radio France");
+        self.radio_france = Some(cx.spawn(async move |this, cx| {
+            loop {
+                let now = history::now();
+                let api = api.clone();
+                let Ok(task) = this.update(cx, |_, cx| {
+                    Rt::spawn(cx, async move { api.on_air(id, now).await })
+                }) else {
+                    return;
+                };
+                let wait = match task.await {
+                    Ok(Ok(Some(on_air))) => {
+                        let end = on_air.end;
+                        if this
+                            .update(cx, |p, cx| p.announce(on_air.text, cx))
+                            .is_err()
+                        {
+                            return;
+                        }
+                        // Un peu après la fin prévue, pour laisser l'API changer.
+                        end.map_or(60, |end| (end - history::now() + 5).clamp(15, 180))
+                    }
+                    Ok(Ok(None)) => 30,
+                    Ok(Err(e)) => {
+                        tracing::warn!(id, "titres Radio France : {e}");
+                        // Refus du serveur : on se fait oublier un moment.
+                        if e.to_string().contains("HTTP 4") {
+                            600
+                        } else {
+                            60
+                        }
+                    }
+                    Err(_) => return,
+                };
+                cx.background_executor()
+                    .timer(Duration::from_secs(wait as u64))
+                    .await;
+            }
+        }));
     }
 
     /// Inscrit dans l'historique le titre annoncé par la radio en cours.
@@ -287,6 +364,7 @@ impl Player {
 
     fn start(&mut self, label: String, spec: SourceSpec, cx: &mut Context<Self>) {
         self.resume = None;
+        self.radio_france = None;
         self.now_playing = None;
         self.pending = Some(label);
         self.track = None;

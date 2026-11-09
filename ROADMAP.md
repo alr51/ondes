@@ -142,13 +142,13 @@ Principes :
 
 ### Phase 7 — Radio
 - [x] Historique d'écoute (SQLite, table `history` de `ondes.db`) : titres ICY et morceaux écoutés ≥ 30 s, page « Historique » (Ctrl+7) par jour, recherche, relance, copie, effacement ; 10 000 entrées, pause possible
+- [x] Titres des stations Radio France (aucun ICY) : API `livemeta/pull/{id}`, station reconnue au nom du flux (Icecast, HLS, anciens domaines), interrogée à la fin prévue de chaque morceau ; FIP Cultes, Piano Zen, La musique d'Inter et les webradios ICI thématiques n'y figurent pas
 
 ### Backlog
 - Flatpak (Flathub) (voir phase 5)
 - Installation automatique des mises à jour (`cargo-packager-updater`, paquets signés) pour AppImage, NSIS et `.dmg`
 - Build macOS à vérifier, build Intel ou universel
 - Icône dans la zone de notification (`tray-icon`) pour les bureaux qui en ont une
-- Titres ICY des flux Radio France (pas d'ICY : API dédiée à étudier)
 - Minuteur de mise en veille
 - Édition des enregistrements de directs :
   - découpage sans réencodage (début / fin, découpe en plusieurs morceaux), aux frontières de trames MP3 / ADTS ;

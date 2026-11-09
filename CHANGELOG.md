@@ -16,6 +16,14 @@ automatiquement). Avant de publier une version, renommer la section
 - Les 10 000 dernières écoutes sont gardées ; historique en pause depuis la
   palette (« Activer / désactiver l'historique »).
 
+### Titres des radios Radio France
+- FIP et ses webradios, France Inter, franceinfo, France Musique et ses
+  webradios, France Culture, Mouv' et les 45 stations ICI affichent le morceau
+  ou l'émission en cours : leurs flux n'ont pas de métadonnées ICY, le titre
+  vient de l'API publique de Radio France, interrogée à la fin de chaque
+  morceau (au plus toutes les 15 s, au moins toutes les 3 min).
+- Ces titres entrent aussi dans l'historique.
+
 ## [0.6.0] — 2026-11-09
 
 ### Visualiseur

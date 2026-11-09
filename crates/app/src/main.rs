@@ -93,6 +93,7 @@ fn main() -> anyhow::Result<()> {
             let saved_window = state.window;
             Settings::init(state, cx);
             radio::Directory::init(cx);
+            radio::RadioFranceApi::init(cx);
             radio::FavoritesModel::init(cx);
             history::HistoryModel::init(cx);
             logos::Logos::init(cx);

@@ -1,16 +1,18 @@
 //! Webradios : annuaire Radio Browser, favoris et historique d'écoute
-//! (SQLite), import de playlists.
+//! (SQLite), import de playlists, titres des stations Radio France.
 
 mod browser;
 mod favorites;
 mod history;
 mod import;
+mod radiofrance;
 mod station;
 
 pub use browser::{Country, Language, RadioBrowser, SearchQuery, Tag};
 pub use favorites::Favorites;
 pub use history::{History, HistoryEntry, HistoryKind};
 pub use import::import_playlist;
+pub use radiofrance::{OnAir, RadioFrance, station_id as radio_france_station};
 pub use station::Station;
 
 /// Erreurs de la crate.
