@@ -150,6 +150,8 @@ pub struct AppState {
     pub visual: VisualState,
     /// Mode d'affichage de la page « En cours ».
     pub now_playing_mode: String,
+    /// Barre latérale pliée (icônes seules).
+    pub sidebar_collapsed: bool,
 }
 
 impl Default for AppState {
@@ -169,6 +171,7 @@ impl Default for AppState {
             compact: CompactState::default(),
             visual: VisualState::default(),
             now_playing_mode: "cover".into(),
+            sidebar_collapsed: false,
         }
     }
 }

@@ -18,6 +18,9 @@ Des effets visuels animés par la musique, calculés par la carte graphique.
 ### Page « En cours »
 Une nouvelle page **En cours** dans la fenêtre principale (barre latérale, palette de commandes ou **Ctrl+0**) affiche en grand ce qui est joué, au choix : pochette ou logo de la radio, spectre, visualiseur, titre, file d'attente. Le mode choisi est mémorisé.
 
+### Barre latérale pliable
+La barre latérale se replie pour ne garder que ses icônes, et laisser plus de place aux pages : bouton à gauche de la barre d'adresse, palette de commandes ou **Ctrl+B**. Le nom de chaque page s'affiche au survol, et l'état est mémorisé.
+
 ### Améliorations
 - Ondes consomme moins de processeur pendant la lecture : le spectre de la barre de lecture ne redessine plus toute la fenêtre à chaque image de l'écran.
 - Le visualiseur est plus net sur les grands écrans : les effets sont calculés jusqu'à 1920 pixels de large (800 auparavant).

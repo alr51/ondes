@@ -34,6 +34,7 @@ gpui_kit::actions!(
         FocusLocation,
         OpenFile,
         ToggleTheme,
+        ToggleSidebar,
         ToggleNotifications,
         CheckUpdates,
         ToggleUpdateCheck,
@@ -74,6 +75,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("ctrl-shift-p", OpenPalette, None),
         KeyBinding::new("ctrl-l", FocusLocation, None),
         KeyBinding::new("ctrl-o", OpenFile, None),
+        KeyBinding::new("ctrl-b", ToggleSidebar, None),
         KeyBinding::new("ctrl-0", GoNowPlaying, None),
         KeyBinding::new("ctrl-1", GoExplore, None),
         KeyBinding::new("ctrl-2", GoFavorites, None),
@@ -222,6 +224,12 @@ pub fn palette() -> Vec<(&'static str, Vec<PaletteEntry>)> {
                     SunMoon,
                     ToggleTheme,
                     ["thème", "dark", "light"]
+                ),
+                entry!(
+                    "Plier / déplier la barre latérale",
+                    PanelLeft,
+                    ToggleSidebar,
+                    ["barre latérale", "sidebar", "menu", "plier", "masquer"]
                 ),
                 entry!(
                     "Activer / désactiver les notifications",

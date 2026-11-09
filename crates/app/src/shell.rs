@@ -2,19 +2,23 @@
 
 use std::cell::Cell;
 use std::rc::Rc;
-use std::time::Duration;
 
 use gpui_kit::assets::IconName;
+use gpui_kit::base::component_traits::Collapsible as _;
 use gpui_kit::component::{
-    ActiveTheme, Sizable, StyledExt, Theme, ThemeMode, WindowExt as _,
+    ActiveTheme, StyledExt, Theme, ThemeMode, WindowExt as _,
     button::{Button, ButtonVariants},
     command::{Command, CommandGroup, CommandItem, CommandState},
     h_flex,
     input::{Input, InputEvent, InputState},
     notification::Notification,
-    sidebar::{Sidebar, SidebarFooter, SidebarGroup, SidebarHeader, SidebarMenu, SidebarMenuItem},
+    sidebar::{
+        Sidebar, SidebarCollapsible, SidebarGroup, SidebarHeader, SidebarItem as _, SidebarMenu,
+        SidebarMenuItem,
+    },
     v_flex,
 };
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use ondes_audio::SourceSpec;
@@ -104,18 +108,12 @@ impl Page {
     }
 }
 
-/// État du pont tokio, vérifié au démarrage.
-enum RtStatus {
-    Checking,
-    Ready(Duration),
-    Failed(String),
-}
-
 pub struct Shell {
     page: Page,
     /// Tant que l'utilisateur n'a pas choisi, le thème suit le système.
     follow_system_theme: bool,
-    rt_status: RtStatus,
+    /// Barre latérale réduite à ses icônes (Ctrl+B).
+    sidebar_collapsed: bool,
     player: Entity<Player>,
     player_bar: Entity<PlayerBar>,
     now_playing: Entity<NowPlaying>,
@@ -260,7 +258,7 @@ impl Shell {
         let shell = Self {
             page: Page::from_env().unwrap_or(Page::from_key(&saved.page)),
             follow_system_theme: saved.dark.is_none(),
-            rt_status: RtStatus::Checking,
+            sidebar_collapsed: saved.sidebar_collapsed,
             player,
             player_bar,
             now_playing,
@@ -297,7 +295,7 @@ impl Shell {
                 }
             });
         }
-        shell.check_runtime(cx);
+        shell.check_runtime(window, cx);
         crate::update::check_on_startup(window, cx);
         if let Some(spec) = initial {
             shell.play(spec, cx);
@@ -306,18 +304,24 @@ impl Shell {
     }
 
     /// Aller-retour GPUI → tokio → GPUI : prouve que le pont fonctionne.
-    fn check_runtime(&self, cx: &mut Context<Self>) {
+    /// Vérifie au démarrage que le runtime tokio (réseau) répond : résultat
+    /// dans le journal, notification seulement en cas d'échec.
+    fn check_runtime(&self, window: &mut Window, cx: &mut Context<Self>) {
         let task = Rt::spawn(cx, ondes_core::rt::probe());
-        cx.spawn(async move |this, cx| {
-            let status = match task.await {
-                Ok(elapsed) => RtStatus::Ready(elapsed),
-                Err(err) => RtStatus::Failed(err.to_string()),
-            };
-            this.update(cx, |this, cx| {
-                this.rt_status = status;
-                cx.notify();
-            })
-            .ok();
+        cx.spawn_in(window, async move |this, cx| match task.await {
+            Ok(elapsed) => tracing::info!(?elapsed, "runtime tokio prêt"),
+            Err(err) => {
+                tracing::error!("runtime tokio indisponible : {err}");
+                this.update_in(cx, |_, window, cx| {
+                    window.push_notification(
+                        Notification::error(format!(
+                            "Le réseau ne répond pas (radios, annuaire, mises à jour) : {err}"
+                        )),
+                        cx,
+                    );
+                })
+                .ok();
+            }
         })
         .detach();
     }
@@ -358,9 +362,29 @@ impl Shell {
     }
 
     fn render_quick_open(&self, cx: &mut Context<Self>) -> Div {
+        let collapsed = self.sidebar_collapsed;
         h_flex()
             .gap_2()
             .items_center()
+            .child(
+                Button::new("toggle-sidebar")
+                    .icon(if collapsed {
+                        IconName::PanelLeftOpen
+                    } else {
+                        IconName::PanelLeftClose
+                    })
+                    .ghost()
+                    .tooltip_with_action(
+                        if collapsed {
+                            "Déplier la barre latérale"
+                        } else {
+                            "Plier la barre latérale"
+                        },
+                        &ToggleSidebar,
+                        None,
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| this.toggle_sidebar(cx))),
+            )
             .child(
                 div()
                     .flex_1()
@@ -395,6 +419,14 @@ impl Shell {
             cx,
         );
         Settings::update(cx, |s| s.dark = Some(dark));
+    }
+
+    /// Plie la barre latérale (icônes seules) ou la déplie.
+    fn toggle_sidebar(&mut self, cx: &mut Context<Self>) {
+        self.sidebar_collapsed = !self.sidebar_collapsed;
+        let collapsed = self.sidebar_collapsed;
+        Settings::update(cx, |s| s.sidebar_collapsed = collapsed);
+        cx.notify();
     }
 
     /// Bascule entre la fenêtre principale et la vue compacte.
@@ -548,6 +580,7 @@ impl Shell {
         on_shell!(ToggleCompact, |this, cx| this.toggle_compact(cx));
         on_shell!(ToggleVisualizer, |this, cx| this.toggle_visualizer(cx));
         on_shell!(ToggleTheme, |this, cx| this.toggle_theme(cx));
+        on_shell!(ToggleSidebar, |this, cx| this.toggle_sidebar(cx));
         on_shell!(GoNowPlaying, |this, cx| this.set_page(Page::NowPlaying, cx));
         on_shell!(GoExplore, |this, cx| this.set_page(Page::RadioExplore, cx));
         on_shell!(GoFavorites, |this, cx| this
@@ -610,31 +643,51 @@ impl Shell {
             })
     }
 
-    fn render_sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_sidebar(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
-        let is_dark = theme.is_dark();
+        let collapsed = self.sidebar_collapsed;
+
+        let logo = div()
+            .flex()
+            .flex_shrink_0()
+            .items_center()
+            .justify_center()
+            .size_8()
+            .rounded(theme.radius)
+            .bg(theme.sidebar_primary)
+            .text_color(theme.sidebar_primary_foreground)
+            .child(IconName::RadioTower);
+        let header = SidebarHeader::new()
+            // Pliée, il ne reste que 32 px : l'en-tête perd sa marge interne pour
+            // que le logo soit centré sur les icônes du menu.
+            .when(collapsed, |this| this.p_0().justify_center())
+            .child(
+                h_flex()
+                    .gap_2()
+                    .items_center()
+                    .child(logo)
+                    .when(!collapsed, |this| {
+                        this.child(div().font_semibold().child("Ondes"))
+                    }),
+            );
+
+        // Réglages, « À propos » et thème : une liste comme la navigation,
+        // réduite aux icônes (avec infobulle) quand la barre est pliée.
+        let footer = v_flex()
+            .w_full()
+            .gap_2()
+            .when(collapsed, |this| this.items_center())
+            .child(self.footer_menu(cx).w_full().collapsed(collapsed).render(
+                "footer-menu",
+                window,
+                cx,
+            ));
 
         Sidebar::new("main-sidebar")
             .w(px(232.))
-            .header(
-                SidebarHeader::new().child(
-                    h_flex()
-                        .gap_2()
-                        .items_center()
-                        .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .size_8()
-                                .rounded(theme.radius)
-                                .bg(theme.sidebar_primary)
-                                .text_color(theme.sidebar_primary_foreground)
-                                .child(IconName::RadioTower),
-                        )
-                        .child(div().font_semibold().child("Ondes")),
-                ),
-            )
+            .collapsible(SidebarCollapsible::Icon)
+            .collapsed(collapsed)
+            .header(header)
             .child(
                 SidebarGroup::new("Écoute")
                     .child(SidebarMenu::new().children([self.nav_item(Page::NowPlaying, cx)])),
@@ -653,72 +706,37 @@ impl Shell {
                     self.nav_item(Page::LibraryFolders, cx),
                 ])),
             )
-            .footer(
-                SidebarFooter::new().child(
-                    h_flex()
-                        .w_full()
-                        .gap_1()
-                        .items_center()
-                        .child(self.render_rt_status(cx))
-                        .child(div().flex_1())
-                        .child({
-                            let player = self.player.clone();
-                            Button::new("audio-settings")
-                                .icon(IconName::SlidersHorizontal)
-                                .ghost()
-                                .small()
-                                .tooltip("Réglages audio")
-                                .on_click(move |_, window, cx| {
-                                    crate::audio_settings::open(player.clone(), window, cx)
-                                })
-                        })
-                        .child(
-                            Button::new("about")
-                                .icon(IconName::Info)
-                                .ghost()
-                                .small()
-                                .tooltip("À propos")
-                                .on_click(|_, window, cx| crate::about::open(window, cx)),
-                        )
-                        .child(
-                            Button::new("toggle-theme")
-                                .icon(if is_dark {
-                                    IconName::Sun
-                                } else {
-                                    IconName::Moon
-                                })
-                                .ghost()
-                                .small()
-                                .tooltip(if is_dark {
-                                    "Thème clair"
-                                } else {
-                                    "Thème sombre"
-                                })
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.toggle_theme(cx);
-                                })),
-                        ),
-                ),
-            )
+            .footer(footer)
     }
 
-    fn render_rt_status(&self, cx: &App) -> impl IntoElement {
-        let theme = cx.theme();
-        let (color, label) = match &self.rt_status {
-            RtStatus::Checking => (theme.muted_foreground, "Async : démarrage…".to_string()),
-            RtStatus::Ready(d) => (
-                theme.success,
-                format!("Async : OK ({:.1} ms)", d.as_secs_f64() * 1000.),
-            ),
-            RtStatus::Failed(err) => (theme.danger, format!("Async : {err}")),
-        };
-        h_flex()
-            .gap_1p5()
-            .items_center()
-            .text_xs()
-            .text_color(theme.muted_foreground)
-            .child(div().size_2().rounded_full().bg(color))
-            .child(label)
+    /// Réglages audio, « À propos » et thème, en bas de la barre latérale.
+    fn footer_menu(&self, cx: &mut Context<Self>) -> SidebarMenu {
+        let is_dark = cx.theme().is_dark();
+        let player = self.player.clone();
+        let shell = cx.entity().downgrade();
+        SidebarMenu::new().children([
+            SidebarMenuItem::new("Réglages audio")
+                .icon(IconName::SlidersHorizontal)
+                .on_click(move |_, window, cx| {
+                    crate::audio_settings::open(player.clone(), window, cx)
+                }),
+            SidebarMenuItem::new("À propos")
+                .icon(IconName::Info)
+                .on_click(|_, window, cx| crate::about::open(window, cx)),
+            SidebarMenuItem::new(if is_dark {
+                "Thème clair"
+            } else {
+                "Thème sombre"
+            })
+            .icon(if is_dark {
+                IconName::Sun
+            } else {
+                IconName::Moon
+            })
+            .on_click(move |_, _, cx| {
+                shell.update(cx, |this, cx| this.toggle_theme(cx)).ok();
+            }),
+        ])
     }
 
     fn render_content(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -751,7 +769,7 @@ impl Shell {
 }
 
 impl Render for Shell {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .size_full()
             .bg(cx.theme().background)
@@ -766,7 +784,7 @@ impl Render for Shell {
                 h_flex()
                     .flex_1()
                     .min_h_0()
-                    .child(self.render_sidebar(cx))
+                    .child(self.render_sidebar(window, cx))
                     .child(self.render_content(cx)),
             )
             .child(self.player_bar.clone())
