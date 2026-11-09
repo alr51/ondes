@@ -7,6 +7,8 @@ automatiquement). Avant de publier une version, renommer la section
 
 ## [Non publié]
 
+## [0.6.0] — 2026-11-09
+
 ### Visualiseur
 Des effets visuels animés par la musique, calculés par la carte graphique.
 
