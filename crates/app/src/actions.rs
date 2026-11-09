@@ -36,11 +36,13 @@ gpui_kit::actions!(
         ToggleTheme,
         ToggleSidebar,
         ToggleNotifications,
+        ToggleHistory,
         CheckUpdates,
         ToggleUpdateCheck,
         About,
         GoHome,
         GoNowPlaying,
+        GoHistory,
         GoExplore,
         GoFavorites,
         GoTracks,
@@ -84,6 +86,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("ctrl-4", GoAlbums, None),
         KeyBinding::new("ctrl-5", GoArtists, None),
         KeyBinding::new("ctrl-6", GoFolders, None),
+        KeyBinding::new("ctrl-7", GoHistory, None),
         KeyBinding::new("ctrl-q", Quit, None),
     ]);
 }
@@ -199,6 +202,12 @@ pub fn palette() -> Vec<(&'static str, Vec<PaletteEntry>)> {
                     ["lecture", "pochette", "visualiseur", "spectre", "file"]
                 ),
                 entry!(
+                    "Historique",
+                    Clock,
+                    GoHistory,
+                    ["écoutes", "titres", "entendu", "radio"]
+                ),
+                entry!(
                     "Explorer les radios",
                     Radio,
                     GoExplore,
@@ -243,6 +252,12 @@ pub fn palette() -> Vec<(&'static str, Vec<PaletteEntry>)> {
                     Bell,
                     ToggleNotifications,
                     ["notification"]
+                ),
+                entry!(
+                    "Activer / désactiver l'historique",
+                    Clock,
+                    ToggleHistory,
+                    ["historique", "écoutes", "confidentialité"]
                 ),
                 entry!(
                     "Rechercher les mises à jour",

@@ -140,13 +140,15 @@ Principes :
 - [x] Une seule fenêtre : vue compacte et visualiseur deviennent des dispositions de la fenêtre principale (`Layout` dans `shell.rs`) ; vue compacte automatique sous 600 × 420 px ; mode immersif (Échap ou « Vue principale » pour revenir) — taille de chaque disposition mémorisée
 - [x] Page d'accueil (clic sur le logo, Ctrl+L) : adresse à écouter et ouverture de fichier, retirées des autres pages ; titres des pages alignés sur le logo
 
+### Phase 7 — Radio
+- [x] Historique d'écoute (SQLite, table `history` de `ondes.db`) : titres ICY et morceaux écoutés ≥ 30 s, page « Historique » (Ctrl+7) par jour, recherche, relance, copie, effacement ; 10 000 entrées, pause possible
+
 ### Backlog
 - Flatpak (Flathub) (voir phase 5)
 - Installation automatique des mises à jour (`cargo-packager-updater`, paquets signés) pour AppImage, NSIS et `.dmg`
 - Build macOS à vérifier, build Intel ou universel
 - Icône dans la zone de notification (`tray-icon`) pour les bureaux qui en ont une
 - Titres ICY des flux Radio France (pas d'ICY : API dédiée à étudier)
-- Historique des titres entendus
 - Minuteur de mise en veille
 - Édition des enregistrements de directs :
   - découpage sans réencodage (début / fin, découpe en plusieurs morceaux), aux frontières de trames MP3 / ADTS ;

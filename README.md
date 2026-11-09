@@ -57,7 +57,7 @@ pilotent la lecture.
 | `Ctrl+U` / `Ctrl+R` | Aléatoire / mode de répétition |
 | `Ctrl+D` | Radio en cours : ajouter ou retirer des favoris |
 | `Ctrl+L` / `Ctrl+O` | Écouter une URL / ouvrir un fichier |
-| `Ctrl+1` … `Ctrl+6` | Pages (Explorer, Favoris, Morceaux, Albums, Artistes, Dossiers) |
+| `Ctrl+1` … `Ctrl+7` | Pages (Explorer, Favoris, Morceaux, Albums, Artistes, Dossiers, Historique) |
 | `Ctrl+Q` | Quitter |
 
 ## Structure

@@ -7,6 +7,15 @@ automatiquement). Avant de publier une version, renommer la section
 
 ## [Non publié]
 
+### Historique d'écoute
+- Nouvelle page « Historique » (barre latérale, Ctrl+7) : chaque titre annoncé
+  par une radio, et chaque morceau écouté au moins 30 s (ou la moitié s'il est
+  plus court), avec l'heure, regroupés par jour.
+- Recherche sans accents ni casse ; clic pour relancer la radio ou le morceau ;
+  copier « artiste - titre », retirer une entrée, tout effacer.
+- Les 10 000 dernières écoutes sont gardées ; historique en pause depuis la
+  palette (« Activer / désactiver l'historique »).
+
 ## [0.6.0] — 2026-11-09
 
 ### Visualiseur

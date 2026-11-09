@@ -5,6 +5,7 @@ mod about;
 mod actions;
 mod audio_settings;
 mod compact;
+mod history;
 mod library;
 mod library_view;
 mod logos;
@@ -93,6 +94,7 @@ fn main() -> anyhow::Result<()> {
             Settings::init(state, cx);
             radio::Directory::init(cx);
             radio::FavoritesModel::init(cx);
+            history::HistoryModel::init(cx);
             logos::Logos::init(cx);
             library::LibraryModel::init(cx);
 

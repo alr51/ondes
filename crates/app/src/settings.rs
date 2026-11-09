@@ -138,6 +138,8 @@ pub struct AppState {
     pub shuffle: bool,
     pub repeat: String,
     pub notifications: bool,
+    /// Historique d'écoute : titres des radios et morceaux joués.
+    pub history: bool,
     /// Vérifie au démarrage si une version plus récente est publiée.
     pub check_updates: bool,
     /// Dernière vérification réussie (secondes Unix).
@@ -162,6 +164,7 @@ impl Default for AppState {
             shuffle: false,
             repeat: "off".into(),
             notifications: true,
+            history: true,
             check_updates: true,
             last_update_check: None,
             window: None,

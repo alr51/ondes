@@ -10,8 +10,9 @@ use ondes_audio::{
     TrackInfo,
 };
 use ondes_library::Track;
-use ondes_radio::Station;
+use ondes_radio::{HistoryEntry, HistoryKind, Station};
 
+use crate::history::{self, HistoryModel};
 use crate::library::LibraryModel;
 use crate::queue::{Queue, Repeat};
 use crate::radio::Directory;
@@ -53,6 +54,8 @@ pub struct Player {
     analyzer: Option<Analyzer>,
     /// Fondu enchaîné aussi entre deux morceaux d'un même album.
     crossfade_same_album: bool,
+    /// Le fichier en cours est déjà inscrit dans l'historique.
+    logged: bool,
     _events: Task<()>,
 }
 
@@ -99,6 +102,7 @@ impl Player {
             analyzer,
             recording: None,
             crossfade_same_album: audio.crossfade_same_album,
+            logged: false,
             state: PlaybackState::Idle,
             track: None,
             station: None,
@@ -134,9 +138,13 @@ impl Player {
                     _ => {}
                 }
             }
-            Event::NowPlaying(title) => self.now_playing = Some(title),
+            Event::NowPlaying(title) => {
+                self.log_radio(&title, cx);
+                self.now_playing = Some(title);
+            }
             Event::Track(track) => {
                 self.now_playing = None;
+                self.logged = false;
                 self.track = Some(track);
                 self.pending = None;
                 self.position = Duration::ZERO;
@@ -154,6 +162,7 @@ impl Player {
                 }
                 self.failures_in_row = 0;
                 self.now_playing = None;
+                self.logged = false;
                 self.track = Some(track);
                 self.pending = None;
                 self.position = Duration::ZERO;
@@ -164,7 +173,10 @@ impl Player {
                 self.recording = None;
                 cx.emit(PlayerNotice::Recorded(done));
             }
-            Event::Position(pos) => self.position = pos,
+            Event::Position(pos) => {
+                self.position = pos;
+                self.log_file(cx);
+            }
             Event::Reconnecting { attempt } => self.reconnecting = Some(attempt),
             // Morceau illisible dans une file : on le signale et on passe au suivant.
             Event::Error(reason) if !self.queue.is_empty() && self.track.is_none() => {
@@ -190,6 +202,66 @@ impl Player {
                 self.pending = None;
             }
         }
+    }
+
+    /// Inscrit dans l'historique le titre annoncé par la radio en cours.
+    fn log_radio(&self, title: &str, cx: &mut Context<Self>) {
+        if title.trim().is_empty() {
+            return;
+        }
+        let (name, url, favicon) = match (&self.station, &self.track) {
+            (Some(s), _) => (s.name.clone(), s.url.clone(), s.favicon.clone()),
+            (None, Some(t)) if t.live => match &t.spec {
+                SourceSpec::Url(url) => (t.title.clone(), url.clone(), None),
+                SourceSpec::File(_) => return,
+            },
+            _ => return,
+        };
+        let entry = HistoryEntry::radio(history::now(), title, &name, &url, favicon);
+        HistoryModel::global(cx).update(cx, |h, cx| h.record(entry, cx));
+    }
+
+    /// Inscrit le fichier en cours une fois écouté assez longtemps.
+    fn log_file(&mut self, cx: &mut Context<Self>) {
+        let Some(track) = self.track.as_ref().filter(|t| !t.live) else {
+            return;
+        };
+        let SourceSpec::File(path) = &track.spec else {
+            return;
+        };
+        let needed = track
+            .duration
+            .map_or(history::LISTENED, |d| d.div_f32(2.).min(history::LISTENED));
+        if self.logged || self.position < needed {
+            return;
+        }
+        self.logged = true;
+        // Tags de la file, ou de la bibliothèque pour un fichier ouvert directement.
+        let tags = self
+            .current_track()
+            .filter(|t| &t.path == path)
+            .cloned()
+            .or_else(|| {
+                LibraryModel::global(cx)
+                    .read(cx)
+                    .data
+                    .tracks
+                    .iter()
+                    .find(|t| &t.path == path)
+                    .cloned()
+            });
+        let tags = tags.as_ref();
+        let entry = HistoryEntry {
+            id: 0,
+            played_at: history::now(),
+            kind: HistoryKind::File,
+            title: tags.map_or_else(|| track.title.clone(), |t| t.title.clone()),
+            artist: tags.and_then(|t| t.artist.clone()),
+            source: tags.and_then(|t| t.album.clone()),
+            location: path.to_string_lossy().into_owned(),
+            favicon: None,
+        };
+        HistoryModel::global(cx).update(cx, |h, cx| h.record(entry, cx));
     }
 
     fn send(&self, cmd: Command) {

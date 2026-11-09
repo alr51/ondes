@@ -1,12 +1,15 @@
-//! Webradios : annuaire Radio Browser, favoris (SQLite), import de playlists.
+//! Webradios : annuaire Radio Browser, favoris et historique d'écoute
+//! (SQLite), import de playlists.
 
 mod browser;
 mod favorites;
+mod history;
 mod import;
 mod station;
 
 pub use browser::{Country, Language, RadioBrowser, SearchQuery, Tag};
 pub use favorites::Favorites;
+pub use history::{History, HistoryEntry, HistoryKind};
 pub use import::import_playlist;
 pub use station::Station;
 

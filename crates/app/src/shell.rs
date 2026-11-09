@@ -26,6 +26,7 @@ use ondes_audio::SourceSpec;
 
 use crate::actions::{self, *};
 use crate::compact::CompactView;
+use crate::history::HistoryView;
 use crate::library_view::{GroupKind, LibraryFolders, LibraryGroups, LibraryTracks};
 use crate::now_playing::NowPlaying;
 use crate::player::{Player, PlayerNotice};
@@ -45,6 +46,7 @@ pub enum Page {
     /// Écouter une URL ou ouvrir un fichier ; atteinte par le logo.
     Home,
     NowPlaying,
+    History,
     RadioExplore,
     RadioFavorites,
     LibraryTracks,
@@ -68,6 +70,7 @@ impl Page {
         match self {
             Page::Home => "home",
             Page::NowPlaying => "now",
+            Page::History => "history",
             Page::RadioExplore => "explore",
             Page::RadioFavorites => "favorites",
             Page::LibraryTracks => "tracks",
@@ -81,6 +84,7 @@ impl Page {
         match key {
             "home" => Page::Home,
             "now" => Page::NowPlaying,
+            "history" => Page::History,
             "favorites" => Page::RadioFavorites,
             "tracks" => Page::LibraryTracks,
             "albums" => Page::LibraryAlbums,
@@ -94,6 +98,7 @@ impl Page {
         match self {
             Page::Home => "Accueil",
             Page::NowPlaying => "En cours",
+            Page::History => "Historique",
             Page::RadioExplore => "Explorer les radios",
             Page::RadioFavorites => "Radios favorites",
             Page::LibraryTracks => "Morceaux",
@@ -107,6 +112,7 @@ impl Page {
         match self {
             Page::Home => IconName::House,
             Page::NowPlaying => IconName::Disc3,
+            Page::History => IconName::Clock,
             Page::RadioExplore => IconName::Radio,
             Page::RadioFavorites => IconName::Heart,
             Page::LibraryTracks => IconName::ListMusic,
@@ -153,6 +159,7 @@ pub struct Shell {
     player: Entity<Player>,
     player_bar: Entity<PlayerBar>,
     now_playing: Entity<NowPlaying>,
+    history: Entity<HistoryView>,
     explore: Entity<RadioExplore>,
     favorites: Entity<RadioFavorites>,
     tracks: Entity<LibraryTracks>,
@@ -223,6 +230,7 @@ impl Shell {
         });
         let player_bar = cx.new(|cx| PlayerBar::new(player.clone(), window, cx));
         let now_playing = cx.new(|cx| NowPlaying::new(player.clone(), cx));
+        let history = cx.new(|cx| HistoryView::new(player.clone(), window, cx));
         let explore = cx.new(|cx| RadioExplore::new(player.clone(), window, cx));
         let favorites = cx.new(|cx| RadioFavorites::new(player.clone(), window, cx));
         let tracks = cx.new(|cx| LibraryTracks::new(player.clone(), window, cx));
@@ -323,6 +331,7 @@ impl Shell {
             player,
             player_bar,
             now_playing,
+            history,
             explore,
             favorites,
             tracks,
@@ -641,6 +650,18 @@ impl Shell {
                 ),
             }
         });
+        with_window!(ToggleHistory, |_this, window, cx| {
+            let enabled = !Settings::get(cx).history;
+            Settings::update(cx, |s| s.history = enabled);
+            window.push_notification(
+                Notification::info(if enabled {
+                    "Historique d'écoute activé"
+                } else {
+                    "Historique d'écoute en pause"
+                }),
+                cx,
+            );
+        });
         with_window!(CheckUpdates, |_this, window, cx| crate::update::check(
             true, window, cx
         ));
@@ -683,6 +704,7 @@ impl Shell {
         on_shell!(ToggleSidebar, |this, cx| this.toggle_sidebar(cx));
         on_shell!(GoHome, |this, cx| this.set_page(Page::Home, cx));
         on_shell!(GoNowPlaying, |this, cx| this.set_page(Page::NowPlaying, cx));
+        on_shell!(GoHistory, |this, cx| this.set_page(Page::History, cx));
         on_shell!(GoExplore, |this, cx| this.set_page(Page::RadioExplore, cx));
         on_shell!(GoFavorites, |this, cx| this
             .set_page(Page::RadioFavorites, cx));
@@ -801,8 +823,10 @@ impl Shell {
             .collapsed(collapsed)
             .header(header)
             .child(
-                SidebarGroup::new("Écoute")
-                    .child(SidebarMenu::new().children([self.nav_item(Page::NowPlaying, cx)])),
+                SidebarGroup::new("Écoute").child(SidebarMenu::new().children([
+                    self.nav_item(Page::NowPlaying, cx),
+                    self.nav_item(Page::History, cx),
+                ])),
             )
             .child(
                 SidebarGroup::new("Radios").child(SidebarMenu::new().children([
@@ -896,6 +920,7 @@ impl Shell {
                 match self.page {
                     Page::Home => self.render_home(cx).into_any_element(),
                     Page::NowPlaying => self.now_playing.clone().cached(style()).into_any_element(),
+                    Page::History => self.history.clone().cached(style()).into_any_element(),
                     Page::RadioExplore => self.explore.clone().cached(style()).into_any_element(),
                     Page::RadioFavorites => {
                         self.favorites.clone().cached(style()).into_any_element()
