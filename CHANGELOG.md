@@ -10,13 +10,19 @@ automatiquement). Avant de publier une version, renommer la section
 ### Visualiseur
 Des effets visuels animés par la musique, calculés par la carte graphique.
 
-- Ouvrez le visualiseur avec le bouton ✨ de la barre de lecture, la palette de commandes ou **Ctrl+Maj+V**.
+- Le visualiseur occupe toute la fenêtre (**mode immersif**) : bouton ✨ de la barre de lecture, « Mode immersif » de la page En cours, palette de commandes ou **Ctrl+Maj+V**.
 - Quatre effets : **Nébuleuse**, **Anneau**, **Tunnel** et **Ondes**. Ils réagissent au spectre, au volume et aux temps forts de la musique.
-- **Plein écran** avec F11 ou un double-clic ; Échap pour en sortir. Les flèches ← → changent d'effet ; les commandes s'effacent quand la souris ne bouge plus.
+- **Plein écran** avec F11 ou un double-clic ; Échap quitte le plein écran, puis le mode immersif. Les flèches ← → changent d'effet ; les commandes s'effacent quand la souris ne bouge plus.
 - Le visualiseur est aussi un mode de la vue compacte : un clic passe à l'effet suivant.
 
 ### Page « En cours »
 Une nouvelle page **En cours** dans la fenêtre principale (barre latérale, palette de commandes ou **Ctrl+0**) affiche en grand ce qui est joué, au choix : pochette ou logo de la radio, spectre, visualiseur, titre, file d'attente. Le mode choisi est mémorisé.
+
+### Une seule fenêtre
+La vue compacte et le visualiseur ne s'ouvrent plus dans des fenêtres à part : c'est la fenêtre principale qui change de disposition.
+
+- **Vue compacte** (Ctrl+Maj+M, bouton de la barre de lecture) : la fenêtre se réduit au lecteur, puis reprend sa taille. La vue compacte s'affiche aussi d'elle-même quand on rétrécit la fenêtre.
+- **Mode immersif** (Ctrl+Maj+V) : le visualiseur seul ; Échap ou le bouton « Vue principale » pour revenir à la vue précédente.
 
 ### Barre latérale pliable
 La barre latérale se replie pour ne garder que ses icônes, et laisser plus de place aux pages : bouton à gauche de la barre d'adresse, palette de commandes ou **Ctrl+B**. Le nom de chaque page s'affiche au survol, et l'état est mémorisé.

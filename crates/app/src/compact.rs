@@ -1,7 +1,8 @@
-//! Vue compacte : petite fenêtre du lecteur, la fenêtre principale réduite.
+//! Vue compacte : disposition réduite de la fenêtre principale, affichée à
+//! la demande (Ctrl+Maj+M) ou quand la fenêtre devient trop petite.
 //!
 //! Mêmes modes d'affichage que la page « En cours » (voir [`crate::stage`]).
-//! Le mode, la taille et la position sont mémorisés.
+//! Le mode et la taille de la fenêtre en vue compacte sont mémorisés.
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::{
@@ -18,47 +19,7 @@ use crate::player::Player;
 use crate::player_bar::{Status, clock, status};
 use crate::radio::FavoritesModel;
 use crate::radio_explore::toggle_favorite;
-use crate::settings::{Settings, WindowState};
 use crate::stage::{Place, Stage, mode_bar};
-
-/// Ouvre la vue compacte et réduit la fenêtre principale `main`.
-pub fn open(
-    player: Entity<Player>,
-    main: AnyWindowHandle,
-    cx: &mut App,
-) -> Option<AnyWindowHandle> {
-    let saved = Settings::get(cx).compact.window;
-    let options = WindowOptions {
-        window_bounds: Some(match saved {
-            Some(w) => WindowBounds::Windowed(Bounds::new(
-                point(px(w.x), px(w.y)),
-                size(px(w.width.max(260.)), px(w.height.max(240.))),
-            )),
-            None => WindowBounds::centered(size(px(340.), px(440.)), cx),
-        }),
-        window_min_size: Some(size(px(260.), px(240.))),
-        titlebar: Some(TitlebarOptions {
-            title: Some("Ondes".into()),
-            ..Default::default()
-        }),
-        app_id: Some("ondes".into()),
-        ..Default::default()
-    };
-    match gpui_kit::open_window(options, cx, |window, cx| {
-        cx.new(|cx| CompactView::new(player, main, window, cx))
-    }) {
-        Ok((handle, _)) => {
-            if let Err(e) = main.update(cx, |_, window, _| window.minimize_window()) {
-                tracing::warn!("réduction de la fenêtre principale impossible : {e:#}");
-            }
-            Some(handle)
-        }
-        Err(err) => {
-            tracing::error!("vue compacte impossible : {err:#}");
-            None
-        }
-    }
-}
 
 pub struct CompactView {
     player: Entity<Player>,
@@ -68,12 +29,7 @@ pub struct CompactView {
 }
 
 impl CompactView {
-    fn new(
-        player: Entity<Player>,
-        main: AnyWindowHandle,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
+    pub fn new(player: Entity<Player>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let stage = cx.new(|cx| Stage::new(player.clone(), Place::Compact, cx));
         let initial = player.read(cx).volume();
         let volume = cx.new(|_| {
@@ -100,22 +56,6 @@ impl CompactView {
             }),
             cx.observe(&FavoritesModel::global(cx), |_, _, cx| cx.notify()),
             cx.observe(&stage, |_, _, cx| cx.notify()),
-            cx.observe_window_bounds(window, |_, window, cx| {
-                let b = window.bounds();
-                let state = WindowState {
-                    x: f32::from(b.origin.x),
-                    y: f32::from(b.origin.y),
-                    width: f32::from(b.size.width),
-                    height: f32::from(b.size.height),
-                    maximized: false,
-                };
-                Settings::update(cx, |s| s.compact.window = Some(state));
-            }),
-            // Vue fermée (bouton, gestionnaire de fenêtres) : retour à la fenêtre principale.
-            cx.on_release(move |_, cx| {
-                main.update(cx, |_, window, _| window.activate_window())
-                    .ok();
-            }),
         ];
         Self {
             player,
@@ -168,8 +108,10 @@ impl Render for CompactView {
                     .icon(IconName::Maximize2)
                     .ghost()
                     .xsmall()
-                    .tooltip("Fenêtre principale (Ctrl+Maj+M)")
-                    .on_click(|_, window, _| window.remove_window()),
+                    .tooltip("Vue complète (Ctrl+Maj+M)")
+                    .on_click(|_, window, cx| {
+                        window.dispatch_action(Box::new(crate::actions::ToggleCompact), cx)
+                    }),
             );
 
         let timeline = progress.map(|(pos, duration)| {

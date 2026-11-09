@@ -116,7 +116,7 @@ fn main() -> anyhow::Result<()> {
                     Some(w) => {
                         let bounds = Bounds::new(
                             point(px(w.x), px(w.y)),
-                            size(px(w.width.max(720.)), px(w.height.max(480.))),
+                            size(px(w.width.max(260.)), px(w.height.max(240.))),
                         );
                         if w.maximized {
                             WindowBounds::Maximized(bounds)
@@ -126,7 +126,8 @@ fn main() -> anyhow::Result<()> {
                     }
                     None => WindowBounds::centered(size(px(1100.), px(720.)), cx),
                 }),
-                window_min_size: Some(size(px(720.), px(480.))),
+                // Petite fenêtre : la vue compacte prend le relais (voir `shell.rs`).
+                window_min_size: Some(size(px(260.), px(240.))),
                 titlebar: Some(TitlebarOptions {
                     title: Some("Ondes".into()),
                     ..Default::default()

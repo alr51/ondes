@@ -102,7 +102,7 @@ impl AudioSettings {
     }
 }
 
-/// Vue compacte du lecteur.
+/// Vue compacte du lecteur (`window` : taille de la fenêtre dans cette vue).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CompactState {
@@ -126,7 +126,6 @@ impl Default for CompactState {
 pub struct VisualState {
     /// Effet choisi (indice dans `ondes_visual::EFFECTS`).
     pub effect: usize,
-    pub window: Option<WindowState>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

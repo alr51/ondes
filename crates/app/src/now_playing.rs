@@ -61,10 +61,10 @@ impl Render for NowPlaying {
             .child(
                 Button::new("open-visualizer")
                     .icon(IconName::Fullscreen)
-                    .label("Visualiseur plein écran")
+                    .label("Mode immersif")
                     .ghost()
                     .small()
-                    .tooltip("Ctrl+Maj+V")
+                    .tooltip("Visualiseur seul (Ctrl+Maj+V)")
                     .on_click(|_, window, cx| {
                         window.dispatch_action(Box::new(crate::actions::ToggleVisualizer), cx)
                     }),

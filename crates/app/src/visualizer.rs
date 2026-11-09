@@ -1,5 +1,6 @@
-//! Visualiseurs par shaders : vue réutilisable ([`ShaderView`]) et fenêtre
-//! dédiée, en plein écran au choix.
+//! Visualiseurs par shaders : vue réutilisable ([`ShaderView`]) et mode
+//! immersif de la fenêtre principale ([`VisualizerView`]), en plein écran
+//! au choix.
 //!
 //! Le rendu se fait sur le thread d'`ondes-visual` ; chaque nouvelle image
 //! remplace la précédente (libérée de l'atlas de GPUI).
@@ -20,7 +21,7 @@ use ondes_audio::{AnalyzerHold, PlaybackState};
 use ondes_visual::{EFFECTS, Visualizer};
 
 use crate::player::Player;
-use crate::settings::{Settings, WindowState};
+use crate::settings::Settings;
 
 /// Délai avant que les commandes de la fenêtre s'effacent.
 const OVERLAY_TIMEOUT: Duration = Duration::from_secs(3);
@@ -173,37 +174,8 @@ fn message(text: &str, color: Hsla) -> AnyElement {
         .into_any_element()
 }
 
-/// Ouvre la fenêtre du visualiseur.
-pub fn open(player: Entity<Player>, cx: &mut App) -> Option<AnyWindowHandle> {
-    let saved = Settings::get(cx).visual.window;
-    let options = WindowOptions {
-        window_bounds: Some(match saved {
-            Some(w) => WindowBounds::Windowed(Bounds::new(
-                point(px(w.x), px(w.y)),
-                size(px(w.width.max(320.)), px(w.height.max(200.))),
-            )),
-            None => WindowBounds::centered(size(px(960.), px(540.)), cx),
-        }),
-        window_min_size: Some(size(px(320.), px(200.))),
-        titlebar: Some(TitlebarOptions {
-            title: Some("Ondes — Visualiseur".into()),
-            ..Default::default()
-        }),
-        app_id: Some("ondes".into()),
-        ..Default::default()
-    };
-    match gpui_kit::open_window(options, cx, |window, cx| {
-        cx.new(|cx| VisualizerWindow::new(player, window, cx))
-    }) {
-        Ok((handle, _)) => Some(handle),
-        Err(err) => {
-            tracing::error!("fenêtre du visualiseur impossible : {err:#}");
-            None
-        }
-    }
-}
-
-pub struct VisualizerWindow {
+/// Mode immersif : l'effet seul, commandes en surimpression qui s'effacent.
+pub struct VisualizerView {
     player: Entity<Player>,
     view: Entity<ShaderView>,
     focus: FocusHandle,
@@ -214,28 +186,12 @@ pub struct VisualizerWindow {
     _subscriptions: Vec<Subscription>,
 }
 
-impl VisualizerWindow {
-    fn new(player: Entity<Player>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+impl VisualizerView {
+    pub fn new(player: Entity<Player>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let view = cx.new(|cx| ShaderView::new(player.clone(), cx));
         let focus = cx.focus_handle();
         focus.focus(window, cx);
-        let subscriptions = vec![
-            cx.observe(&player, |_, _, cx| cx.notify()),
-            cx.observe_window_bounds(window, |_, window, cx| {
-                if window.is_fullscreen() || window.is_maximized() {
-                    return;
-                }
-                let b = window.bounds();
-                let state = WindowState {
-                    x: f32::from(b.origin.x),
-                    y: f32::from(b.origin.y),
-                    width: f32::from(b.size.width),
-                    height: f32::from(b.size.height),
-                    maximized: false,
-                };
-                Settings::update(cx, |s| s.visual.window = Some(state));
-            }),
-        ];
+        let subscriptions = vec![cx.observe(&player, |_, _, cx| cx.notify())];
         Self {
             player,
             view,
@@ -264,7 +220,7 @@ impl VisualizerWindow {
     }
 }
 
-impl Render for VisualizerWindow {
+impl Render for VisualizerView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let effect = self.view.read(cx).effect();
         let show_overlay = self.last_move.elapsed() < OVERLAY_TIMEOUT;
@@ -341,6 +297,23 @@ impl Render for VisualizerWindow {
                                 "Plein écran (F11, double-clic)"
                             })
                             .on_click(|_, window, _| window.toggle_fullscreen()),
+                    )
+                    .child(
+                        // Quitte aussi le plein écran.
+                        Button::new("leave-immersive")
+                            .icon(IconName::ArrowLeft)
+                            .label("Vue principale")
+                            .ghost()
+                            .small()
+                            .tooltip_with_action(
+                                "Quitter le mode immersif",
+                                &crate::actions::ToggleVisualizer,
+                                None,
+                            )
+                            .on_click(|_, window, cx| {
+                                window
+                                    .dispatch_action(Box::new(crate::actions::ToggleVisualizer), cx)
+                            }),
                     ),
             );
 
@@ -362,12 +335,12 @@ impl Render for VisualizerWindow {
                 cx.listener(|this, _: &crate::actions::PreviousEffect, _, cx| this.cycle(-1, cx)),
             )
             .on_action(|_: &crate::actions::ToggleFullscreen, window, _| window.toggle_fullscreen())
-            .on_action(|_: &crate::actions::CloseVisualizer, window, _| {
-                // Échap : quitte d'abord le plein écran, puis ferme la fenêtre.
+            .on_action(|_: &crate::actions::CloseVisualizer, window, cx| {
+                // Échap : quitte d'abord le plein écran, puis le mode immersif.
                 if window.is_fullscreen() {
                     window.toggle_fullscreen();
                 } else {
-                    window.remove_window();
+                    window.dispatch_action(Box::new(crate::actions::ToggleVisualizer), cx);
                 }
             })
             .child(self.view.clone())

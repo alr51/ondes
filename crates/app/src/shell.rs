@@ -24,6 +24,7 @@ use gpui_kit::*;
 use ondes_audio::SourceSpec;
 
 use crate::actions::{self, *};
+use crate::compact::CompactView;
 use crate::library_view::{GroupKind, LibraryFolders, LibraryGroups, LibraryTracks};
 use crate::now_playing::NowPlaying;
 use crate::player::{Player, PlayerNotice};
@@ -36,6 +37,7 @@ use crate::radio_favorites::RadioFavorites;
 use crate::runtime::Rt;
 use crate::settings::{Settings, WindowState};
 use crate::system::System;
+use crate::visualizer::VisualizerView;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Page {
@@ -108,6 +110,28 @@ impl Page {
     }
 }
 
+/// Disposition de la fenêtre principale.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Layout {
+    /// Barre latérale, pages et barre de lecture.
+    Full,
+    /// Lecteur réduit (voir [`CompactView`]).
+    Compact,
+    /// Visualiseur seul (voir [`VisualizerView`]).
+    Immersive,
+}
+
+/// En deçà, la fenêtre passe d'elle-même en vue compacte.
+const COMPACT_BELOW: Size<Pixels> = Size {
+    width: px(600.),
+    height: px(420.),
+};
+/// Taille de la fenêtre en vue compacte, la première fois.
+const COMPACT_SIZE: Size<Pixels> = Size {
+    width: px(340.),
+    height: px(440.),
+};
+
 pub struct Shell {
     page: Page,
     /// Tant que l'utilisateur n'a pas choisi, le thème suit le système.
@@ -126,10 +150,18 @@ pub struct Shell {
     /// Champ « URL ou chemin » de la barre d'ouverture rapide.
     location: Entity<InputState>,
     palette: Entity<CommandState>,
-    /// Fenêtre principale, et vue compacte si elle est ouverte.
-    main_window: AnyWindowHandle,
-    compact: Option<AnyWindowHandle>,
-    visualizer: Option<AnyWindowHandle>,
+    /// Disposition demandée (bouton, raccourci). La vue compacte s'affiche
+    /// aussi quand la fenêtre est trop petite.
+    layout: Layout,
+    /// Disposition affichée à la dernière image.
+    shown: Layout,
+    /// Disposition à retrouver en quittant le mode immersif.
+    before_immersive: Layout,
+    /// Taille de la fenêtre avant la vue compacte, rendue en la quittant.
+    full_size: Option<Size<Pixels>>,
+    /// Vues créées à l'affichage et libérées ensuite (le visualiseur s'arrête).
+    compact: Option<Entity<CompactView>>,
+    immersive: Option<Entity<VisualizerView>>,
     _system: Entity<System>,
     _subscriptions: Vec<Subscription>,
 }
@@ -233,9 +265,26 @@ impl Shell {
                     }
                 },
             ),
-            cx.observe_window_bounds(window, |_, window, cx| {
+            cx.observe_window_bounds(window, |this, window, cx| {
+                if window.is_fullscreen() {
+                    return;
+                }
                 let maximized = window.is_maximized();
                 let b = window.bounds();
+                // En vue compacte demandée, c'est la taille de cette vue qu'on retient.
+                if this.layout == Layout::Compact {
+                    if !maximized {
+                        let state = WindowState {
+                            x: f32::from(b.origin.x),
+                            y: f32::from(b.origin.y),
+                            width: f32::from(b.size.width),
+                            height: f32::from(b.size.height),
+                            maximized: false,
+                        };
+                        Settings::update(cx, |s| s.compact.window = Some(state));
+                    }
+                    return;
+                }
                 Settings::update(cx, |s| {
                     // Taille « normale » gardée quand la fenêtre est agrandie.
                     if maximized {
@@ -270,9 +319,12 @@ impl Shell {
             folders,
             location,
             palette,
-            main_window: window.window_handle(),
+            layout: Layout::Full,
+            shown: Layout::Full,
+            before_immersive: Layout::Full,
+            full_size: None,
             compact: None,
-            visualizer: None,
+            immersive: None,
             _system: system,
             _subscriptions: subscriptions,
         };
@@ -287,9 +339,9 @@ impl Shell {
                 } else if what == "audio" {
                     crate::audio_settings::open(this.player.clone(), window, cx);
                 } else if what == "compact" {
-                    this.toggle_compact(cx);
+                    this.toggle_compact(window, cx);
                 } else if what == "visual" {
-                    this.toggle_visualizer(cx);
+                    this.toggle_visualizer(window, cx);
                 } else {
                     this.open_palette(window, cx);
                 }
@@ -429,40 +481,58 @@ impl Shell {
         cx.notify();
     }
 
-    /// Bascule entre la fenêtre principale et la vue compacte.
-    fn toggle_compact(&mut self, cx: &mut Context<Self>) {
-        if let Some(handle) = self.compact.take()
-            && handle
-                .update(cx, |_, window, _| window.remove_window())
-                .is_ok()
-        {
-            return;
+    /// Bascule entre la vue complète et la vue compacte ; la fenêtre prend
+    /// la taille mémorisée de chacune.
+    fn toggle_compact(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.layout == Layout::Immersive {
+            self.leave_immersive(window);
         }
-        let (player, main) = (self.player.clone(), self.main_window);
-        let shell = cx.entity().downgrade();
-        // Après l'action en cours : ouvrir une fenêtre pendant une mise à jour
-        // d'entité n'est pas sûr.
-        cx.defer(move |cx| {
-            let handle = crate::compact::open(player, main, cx);
-            shell.update(cx, |this, _| this.compact = handle).ok();
-        });
+        let compact = self.layout == Layout::Compact || too_small(window);
+        if compact {
+            self.layout = Layout::Full;
+            let saved = Settings::get(cx).window;
+            let size = self
+                .full_size
+                .take()
+                .or_else(|| saved.map(|w| size(px(w.width), px(w.height))))
+                .filter(|s| !fits_compact(*s))
+                .unwrap_or(size(px(1100.), px(720.)));
+            window.resize(size);
+        } else {
+            if window.is_fullscreen() {
+                window.toggle_fullscreen();
+            }
+            if window.is_maximized() {
+                window.zoom_window();
+            }
+            self.full_size = Some(window.viewport_size());
+            self.layout = Layout::Compact;
+            let size = Settings::get(cx)
+                .compact
+                .window
+                .map(|w| size(px(w.width), px(w.height)))
+                .unwrap_or(COMPACT_SIZE);
+            window.resize(size);
+        }
+        cx.notify();
     }
 
-    /// Ouvre ou ferme la fenêtre du visualiseur.
-    fn toggle_visualizer(&mut self, cx: &mut Context<Self>) {
-        if let Some(handle) = self.visualizer.take()
-            && handle
-                .update(cx, |_, window, _| window.remove_window())
-                .is_ok()
-        {
-            return;
+    /// Entre dans le mode immersif (visualiseur seul) ou en sort.
+    fn toggle_visualizer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.layout == Layout::Immersive {
+            self.leave_immersive(window);
+        } else {
+            self.before_immersive = self.layout;
+            self.layout = Layout::Immersive;
         }
-        let player = self.player.clone();
-        let shell = cx.entity().downgrade();
-        cx.defer(move |cx| {
-            let handle = crate::visualizer::open(player, cx);
-            shell.update(cx, |this, _| this.visualizer = handle).ok();
-        });
+        cx.notify();
+    }
+
+    fn leave_immersive(&mut self, window: &mut Window) {
+        if window.is_fullscreen() {
+            window.toggle_fullscreen();
+        }
+        self.layout = self.before_immersive;
     }
 
     fn set_page(&mut self, page: Page, cx: &mut Context<Self>) {
@@ -523,6 +593,10 @@ impl Shell {
         }
         with_window!(OpenPalette, |this, window, cx| this
             .open_palette(window, cx));
+        with_window!(ToggleCompact, |this, window, cx| this
+            .toggle_compact(window, cx));
+        with_window!(ToggleVisualizer, |this, window, cx| this
+            .toggle_visualizer(window, cx));
         with_window!(About, |_this, window, cx| crate::about::open(window, cx));
         with_window!(OpenAudioSettings, |this, window, cx| {
             crate::audio_settings::open(this.player.clone(), window, cx)
@@ -577,8 +651,7 @@ impl Shell {
             }};
         }
         on_shell!(OpenFile, |this, cx| this.open_file_dialog(cx));
-        on_shell!(ToggleCompact, |this, cx| this.toggle_compact(cx));
-        on_shell!(ToggleVisualizer, |this, cx| this.toggle_visualizer(cx));
+
         on_shell!(ToggleTheme, |this, cx| this.toggle_theme(cx));
         on_shell!(ToggleSidebar, |this, cx| this.toggle_sidebar(cx));
         on_shell!(GoNowPlaying, |this, cx| this.set_page(Page::NowPlaying, cx));
@@ -768,8 +841,63 @@ impl Shell {
     }
 }
 
+/// Fenêtre trop petite pour la vue complète.
+fn too_small(window: &Window) -> bool {
+    fits_compact(window.viewport_size())
+}
+
+fn fits_compact(size: Size<Pixels>) -> bool {
+    size.width < COMPACT_BELOW.width || size.height < COMPACT_BELOW.height
+}
+
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let shown = match self.layout {
+            Layout::Full if too_small(window) => Layout::Compact,
+            layout => layout,
+        };
+        if shown != self.shown {
+            // Page « En cours » masquée : son visualiseur s'arrête.
+            if self.shown == Layout::Full {
+                self.now_playing.update(cx, |n, cx| n.suspend(cx));
+            }
+            if shown != Layout::Compact {
+                self.compact = None;
+            }
+            if shown != Layout::Immersive {
+                self.immersive = None;
+            }
+            self.shown = shown;
+        }
+
+        let content = match shown {
+            Layout::Full => v_flex()
+                .size_full()
+                .child(
+                    h_flex()
+                        .flex_1()
+                        .min_h_0()
+                        .child(self.render_sidebar(window, cx))
+                        .child(self.render_content(cx)),
+                )
+                .child(self.player_bar.clone())
+                .into_any_element(),
+            Layout::Compact => {
+                let player = self.player.clone();
+                self.compact
+                    .get_or_insert_with(|| cx.new(|cx| CompactView::new(player, window, cx)))
+                    .clone()
+                    .into_any_element()
+            }
+            Layout::Immersive => {
+                let player = self.player.clone();
+                self.immersive
+                    .get_or_insert_with(|| cx.new(|cx| VisualizerView::new(player, window, cx)))
+                    .clone()
+                    .into_any_element()
+            }
+        };
+
         v_flex()
             .size_full()
             .bg(cx.theme().background)
@@ -780,13 +908,6 @@ impl Render for Shell {
                 }
             }))
             .text_color(cx.theme().foreground)
-            .child(
-                h_flex()
-                    .flex_1()
-                    .min_h_0()
-                    .child(self.render_sidebar(window, cx))
-                    .child(self.render_content(cx)),
-            )
-            .child(self.player_bar.clone())
+            .child(content)
     }
 }

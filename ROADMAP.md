@@ -137,6 +137,7 @@ Principes :
 - [ ] « Toujours au-dessus » pour la vue compacte — GPUI ne le permet pas (pas d'état `_NET_WM_STATE_ABOVE`)
 - [x] Visualiseur rendu jusqu'à 1920 px de large (800 auparavant)
 - [x] Barre latérale pliable (icônes seules, Ctrl+B), mémorisée ; réglages, « À propos » et thème en liste ; statut du runtime async retiré (journal, notification en cas d'échec)
+- [x] Une seule fenêtre : vue compacte et visualiseur deviennent des dispositions de la fenêtre principale (`Layout` dans `shell.rs`) ; vue compacte automatique sous 600 × 420 px ; mode immersif (Échap ou « Vue principale » pour revenir) — taille de chaque disposition mémorisée
 
 ### Backlog
 - Flatpak (Flathub) (voir phase 5)

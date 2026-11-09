@@ -149,16 +149,16 @@ pub fn palette() -> Vec<(&'static str, Vec<PaletteEntry>)> {
                     ["enregistrer", "record", "capture"]
                 ),
                 entry!(
-                    "Vue compacte / fenêtre principale",
+                    "Vue compacte / vue complète",
                     PictureInPicture2,
                     ToggleCompact,
                     ["compact", "mini", "réduire", "petit"]
                 ),
                 entry!(
-                    "Visualiseur",
+                    "Visualiseur en mode immersif",
                     Sparkles,
                     ToggleVisualizer,
-                    ["visualiseur", "shader", "effets", "plein écran"]
+                    ["visualiseur", "immersif", "shader", "effets", "plein écran"]
                 ),
                 entry!(
                     "Réglages audio…",
