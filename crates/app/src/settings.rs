@@ -158,7 +158,7 @@ impl Default for AppState {
         Self {
             volume: 0.8,
             dark: None,
-            page: "explore".into(),
+            page: "home".into(),
             shuffle: false,
             repeat: "off".into(),
             notifications: true,

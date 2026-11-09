@@ -6,7 +6,7 @@ use std::rc::Rc;
 use gpui_kit::assets::IconName;
 use gpui_kit::base::component_traits::Collapsible as _;
 use gpui_kit::component::{
-    ActiveTheme, StyledExt, Theme, ThemeMode, WindowExt as _,
+    ActiveTheme, Selectable as _, Sizable as _, StyledExt, Theme, ThemeMode, WindowExt as _,
     button::{Button, ButtonVariants},
     command::{Command, CommandGroup, CommandItem, CommandState},
     h_flex,
@@ -16,6 +16,7 @@ use gpui_kit::component::{
         Sidebar, SidebarCollapsible, SidebarGroup, SidebarHeader, SidebarItem as _, SidebarMenu,
         SidebarMenuItem,
     },
+    tooltip::Tooltip,
     v_flex,
 };
 use gpui_kit::prelude::FluentBuilder as _;
@@ -41,6 +42,8 @@ use crate::visualizer::VisualizerView;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Page {
+    /// Écouter une URL ou ouvrir un fichier ; atteinte par le logo.
+    Home,
     NowPlaying,
     RadioExplore,
     RadioFavorites,
@@ -63,6 +66,7 @@ impl Page {
     /// Identifiant stable, enregistré dans l'état.
     fn key(self) -> &'static str {
         match self {
+            Page::Home => "home",
             Page::NowPlaying => "now",
             Page::RadioExplore => "explore",
             Page::RadioFavorites => "favorites",
@@ -75,6 +79,7 @@ impl Page {
 
     fn from_key(key: &str) -> Self {
         match key {
+            "home" => Page::Home,
             "now" => Page::NowPlaying,
             "favorites" => Page::RadioFavorites,
             "tracks" => Page::LibraryTracks,
@@ -87,6 +92,7 @@ impl Page {
 
     fn title(self) -> &'static str {
         match self {
+            Page::Home => "Accueil",
             Page::NowPlaying => "En cours",
             Page::RadioExplore => "Explorer les radios",
             Page::RadioFavorites => "Radios favorites",
@@ -99,6 +105,7 @@ impl Page {
 
     fn icon(self) -> IconName {
         match self {
+            Page::Home => IconName::House,
             Page::NowPlaying => IconName::Disc3,
             Page::RadioExplore => IconName::Radio,
             Page::RadioFavorites => IconName::Heart,
@@ -120,6 +127,11 @@ enum Layout {
     /// Visualiseur seul (voir [`VisualizerView`]).
     Immersive,
 }
+
+/// Position du logo dans la barre latérale (marges de gpui-kit : 12 + 8 px),
+/// reprise par la ligne de titre des pages pour qu'ils soient alignés.
+const TITLE_TOP: Pixels = px(20.);
+const TITLE_HEIGHT: Pixels = px(32.);
 
 /// En deçà, la fenêtre passe d'elle-même en vue compacte.
 const COMPACT_BELOW: Size<Pixels> = Size {
@@ -413,48 +425,62 @@ impl Shell {
         .detach();
     }
 
-    fn render_quick_open(&self, cx: &mut Context<Self>) -> Div {
-        let collapsed = self.sidebar_collapsed;
-        h_flex()
-            .gap_2()
+    /// Accueil : écouter une URL (radio, playlist) ou ouvrir un fichier.
+    fn render_home(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = cx.theme();
+        v_flex()
+            .size_full()
             .items_center()
+            .justify_center()
+            .gap_6()
             .child(
-                Button::new("toggle-sidebar")
-                    .icon(if collapsed {
-                        IconName::PanelLeftOpen
-                    } else {
-                        IconName::PanelLeftClose
-                    })
-                    .ghost()
-                    .tooltip_with_action(
-                        if collapsed {
-                            "Déplier la barre latérale"
-                        } else {
-                            "Plier la barre latérale"
-                        },
-                        &ToggleSidebar,
-                        None,
+                v_flex()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        div()
+                            .text_2xl()
+                            .font_semibold()
+                            .child("Que voulez-vous écouter ?"),
                     )
-                    .on_click(cx.listener(|this, _, _, cx| this.toggle_sidebar(cx))),
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(theme.muted_foreground)
+                            .child("Collez l'adresse d'une radio ou d'une playlist, ou ouvrez un fichier audio."),
+                    ),
+            )
+            .child(
+                h_flex()
+                    .w_full()
+                    .max_w(px(720.))
+                    .gap_2()
+                    .items_center()
+                    .child(
+                        div()
+                            .flex_1()
+                            .child(Input::new(&self.location).cleanable(true)),
+                    )
+                    .child(
+                        Button::new("listen")
+                            .icon(IconName::Play)
+                            .label("Écouter")
+                            .primary()
+                            .on_click(cx.listener(|this, _, _, cx| this.listen_location(cx))),
+                    )
+                    .child(
+                        Button::new("open-file")
+                            .icon(IconName::FolderOpen)
+                            .label("Ouvrir un fichier…")
+                            .outline()
+                            .on_click(cx.listener(|this, _, _, cx| this.open_file_dialog(cx))),
+                    ),
             )
             .child(
                 div()
-                    .flex_1()
-                    .child(Input::new(&self.location).cleanable(true)),
-            )
-            .child(
-                Button::new("listen")
-                    .icon(IconName::Play)
-                    .label("Écouter")
-                    .primary()
-                    .on_click(cx.listener(|this, _, _, cx| this.listen_location(cx))),
-            )
-            .child(
-                Button::new("open-file")
-                    .icon(IconName::FolderOpen)
-                    .label("Ouvrir un fichier…")
-                    .outline()
-                    .on_click(cx.listener(|this, _, _, cx| this.open_file_dialog(cx))),
+                    .text_xs()
+                    .text_color(theme.muted_foreground)
+                    .child("Vous pouvez aussi glisser-déposer un fichier dans la fenêtre."),
             )
     }
 
@@ -602,6 +628,7 @@ impl Shell {
             crate::audio_settings::open(this.player.clone(), window, cx)
         });
         with_window!(FocusLocation, |this, window, cx| {
+            this.set_page(Page::Home, cx);
             this.location.update(cx, |s, cx| s.focus(window, cx));
         });
         with_window!(ToggleFavorite, |this, window, cx| {
@@ -654,6 +681,7 @@ impl Shell {
 
         on_shell!(ToggleTheme, |this, cx| this.toggle_theme(cx));
         on_shell!(ToggleSidebar, |this, cx| this.toggle_sidebar(cx));
+        on_shell!(GoHome, |this, cx| this.set_page(Page::Home, cx));
         on_shell!(GoNowPlaying, |this, cx| this.set_page(Page::NowPlaying, cx));
         on_shell!(GoExplore, |this, cx| this.set_page(Page::RadioExplore, cx));
         on_shell!(GoFavorites, |this, cx| this
@@ -730,14 +758,25 @@ impl Shell {
             .bg(theme.sidebar_primary)
             .text_color(theme.sidebar_primary_foreground)
             .child(IconName::RadioTower);
+        // Le logo mène à l'accueil (écouter une URL, ouvrir un fichier).
         let header = SidebarHeader::new()
-            // Pliée, il ne reste que 32 px : l'en-tête perd sa marge interne pour
-            // que le logo soit centré sur les icônes du menu.
-            .when(collapsed, |this| this.p_0().justify_center())
+            .selected(self.page == Page::Home)
+            // Pliée, il ne reste que 32 px : pas de marge interne, et une marge
+            // haute qui garde le logo à la même hauteur (20 px) que dépliée.
+            .when(collapsed, |this| this.p_0().mt_3().justify_center())
             .child(
                 h_flex()
+                    .id("home-link")
+                    .flex_1()
                     .gap_2()
                     .items_center()
+                    .cursor_pointer()
+                    .tooltip(|window, cx| {
+                        Tooltip::new("Accueil")
+                            .action(&FocusLocation, None)
+                            .build(window, cx)
+                    })
+                    .on_click(cx.listener(|this, _, _, cx| this.set_page(Page::Home, cx)))
                     .child(logo)
                     .when(!collapsed, |this| {
                         this.child(div().font_semibold().child("Ondes"))
@@ -813,20 +852,49 @@ impl Shell {
     }
 
     fn render_content(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let quick_open = self.render_quick_open(cx);
+        let collapsed = self.sidebar_collapsed;
+        // Ligne de titre à la hauteur du logo de la barre latérale (20 à 52 px).
+        let title = h_flex()
+            .h(TITLE_HEIGHT)
+            .flex_shrink_0()
+            .gap_2()
+            .items_center()
+            .child(
+                Button::new("toggle-sidebar")
+                    .icon(if collapsed {
+                        IconName::PanelLeftOpen
+                    } else {
+                        IconName::PanelLeftClose
+                    })
+                    .ghost()
+                    .small()
+                    .tooltip_with_action(
+                        if collapsed {
+                            "Déplier la barre latérale"
+                        } else {
+                            "Plier la barre latérale"
+                        },
+                        &ToggleSidebar,
+                        None,
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| this.toggle_sidebar(cx))),
+            )
+            .child(div().text_xl().font_semibold().child(self.page.title()));
         v_flex()
             .flex_1()
             .h_full()
             .min_h_0()
-            .p_6()
+            .px_6()
+            .pb_6()
+            .pt(TITLE_TOP)
             .gap_4()
-            .child(quick_open)
-            .child(div().text_xl().font_semibold().child(self.page.title()))
+            .child(title)
             // Pages en cache : redessinées seulement quand elles changent, et non
             // à chaque image du spectre de la barre de lecture.
             .child({
                 let style = || StyleRefinement::default().size_full().min_h_0();
                 match self.page {
+                    Page::Home => self.render_home(cx).into_any_element(),
                     Page::NowPlaying => self.now_playing.clone().cached(style()).into_any_element(),
                     Page::RadioExplore => self.explore.clone().cached(style()).into_any_element(),
                     Page::RadioFavorites => {

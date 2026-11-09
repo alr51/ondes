@@ -39,6 +39,7 @@ gpui_kit::actions!(
         CheckUpdates,
         ToggleUpdateCheck,
         About,
+        GoHome,
         GoNowPlaying,
         GoExplore,
         GoFavorites,
@@ -185,6 +186,12 @@ pub fn palette() -> Vec<(&'static str, Vec<PaletteEntry>)> {
         (
             "Aller à",
             vec![
+                entry!(
+                    "Accueil",
+                    House,
+                    GoHome,
+                    ["accueil", "url", "fichier", "ouvrir", "écouter"]
+                ),
                 entry!(
                     "En cours",
                     Disc3,

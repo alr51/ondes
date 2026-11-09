@@ -24,8 +24,11 @@ La vue compacte et le visualiseur ne s'ouvrent plus dans des fenêtres à part :
 - **Vue compacte** (Ctrl+Maj+M, bouton de la barre de lecture) : la fenêtre se réduit au lecteur, puis reprend sa taille. La vue compacte s'affiche aussi d'elle-même quand on rétrécit la fenêtre.
 - **Mode immersif** (Ctrl+Maj+V) : le visualiseur seul ; Échap ou le bouton « Vue principale » pour revenir à la vue précédente.
 
+### Page d'accueil
+L'adresse à écouter et l'ouverture de fichier ne sont plus en haut de chaque page : elles ont leur page **Accueil**, ouverte d'un clic sur le logo d'Ondes, avec **Ctrl+L** ou la palette de commandes. C'est la page affichée au premier lancement. **Ctrl+O** ouvre toujours un fichier depuis n'importe quelle page.
+
 ### Barre latérale pliable
-La barre latérale se replie pour ne garder que ses icônes, et laisser plus de place aux pages : bouton à gauche de la barre d'adresse, palette de commandes ou **Ctrl+B**. Le nom de chaque page s'affiche au survol, et l'état est mémorisé.
+La barre latérale se replie pour ne garder que ses icônes, et laisser plus de place aux pages : bouton à gauche du titre de la page, palette de commandes ou **Ctrl+B**. Le nom de chaque page s'affiche au survol, et l'état est mémorisé.
 
 ### Améliorations
 - Ondes consomme moins de processeur pendant la lecture : le spectre de la barre de lecture ne redessine plus toute la fenêtre à chaque image de l'écran.
