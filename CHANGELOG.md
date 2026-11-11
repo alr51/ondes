@@ -7,6 +7,8 @@ automatiquement). Avant de publier une version, renommer la section
 
 ## [Non publié]
 
+## [0.7.0] — 2026-11-11
+
 ### Historique d'écoute
 - Nouvelle page « Historique » (barre latérale, Ctrl+7) : chaque titre annoncé
   par une radio, et chaque morceau écouté au moins 30 s (ou la moitié s'il est
