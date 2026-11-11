@@ -141,7 +141,9 @@ impl History {
                 location  TEXT NOT NULL,
                 favicon   TEXT
             );
-            CREATE INDEX IF NOT EXISTS history_played_at ON history (played_at);",
+            CREATE INDEX IF NOT EXISTS history_played_at ON history (played_at);
+            -- Dernière écoute d'une source, pour le dédoublonnage.
+            CREATE INDEX IF NOT EXISTS history_location ON history (location, id);",
         )?;
         let history = Self { conn };
         history.prune()?;

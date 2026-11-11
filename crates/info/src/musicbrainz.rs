@@ -513,18 +513,29 @@ fn title_match(found: &str, wanted: &str) -> u8 {
     u8::from(!wanted.is_empty() && words(found) == wanted)
 }
 
-/// `wanted` figure parmi les artistes crédités (ou est tout le crédit).
-fn credited(credits: &[ArtistCredit], wanted: &str) -> bool {
+/// Place de `wanted` dans le crédit : 2 s'il est l'un des artistes
+/// crédités (ou tout le crédit), 1 si son nom n'est que contenu dans un
+/// autre (« Air » dans « Air Supply »), 0 s'il n'y est pas.
+fn credited(credits: &[ArtistCredit], wanted: &str) -> u8 {
     let wanted = words(wanted);
     if wanted.is_empty() {
-        return false;
+        return 0;
     }
-    let wanted = format!(" {wanted} ");
-    let within = |name: &str| format!(" {} ", words(name)).contains(&wanted);
-    within(&credit_text(credits))
-        || credits
-            .iter()
-            .any(|c| within(&c.name) || c.artist.as_ref().is_some_and(|a| within(&a.name)))
+    let names = std::iter::once(credit_text(credits)).chain(credits.iter().flat_map(|c| {
+        std::iter::once(c.name.clone()).chain(c.artist.as_ref().map(|a| a.name.clone()))
+    }));
+    let padded = format!(" {wanted} ");
+    names
+        .map(|name| {
+            let name = words(&name);
+            if name == wanted {
+                2
+            } else {
+                u8::from(format!(" {name} ").contains(&padded))
+            }
+        })
+        .max()
+        .unwrap_or(0)
 }
 
 /// Meilleur artiste : il doit porter ce nom ou l'avoir pour alias (la
@@ -542,36 +553,38 @@ pub fn best_artist(found: &[MbArtist], name: &str) -> Option<String> {
         .map(|a| a.id.clone())
 }
 
-/// Résultat du bon artiste : la recherche ramène aussi ceux qui n'en
-/// partagent qu'un mot. Sans mot à comparer (« !!! »), le score décide.
-fn acceptable(score: i64, credits: &[ArtistCredit], artist: &str) -> bool {
+/// Place du bon artiste (voir [`credited`]) : la recherche ramène aussi
+/// ceux qui n'en partagent qu'un mot. Sans mot à comparer (« !!! »), le
+/// score de MusicBrainz décide.
+fn artist_rank(score: i64, credits: &[ArtistCredit], artist: &str) -> u8 {
     if words(artist).is_empty() {
-        score >= 70
+        if score >= 70 { 2 } else { 0 }
     } else {
         credited(credits, artist)
     }
 }
 
-/// Meilleur album de l'artiste : titre identique, album studio, score.
+/// Meilleur album de l'artiste : artiste exact, titre identique, album
+/// studio, score.
 pub fn best_release_group(found: &[MbReleaseGroup], title: &str, artist: &str) -> Option<String> {
     found
         .iter()
-        .filter(|g| {
-            title_match(&g.title, title) > 0 && acceptable(g.score, &g.artist_credit, artist)
-        })
-        .max_by_key(|g| {
+        .map(|g| (g, artist_rank(g.score, &g.artist_credit, artist)))
+        .filter(|(g, rank)| *rank > 0 && title_match(&g.title, title) > 0)
+        .max_by_key(|(g, rank)| {
             (
+                *rank,
                 title_match(&g.title, title),
                 Reverse(g.kind().rank()),
                 g.score,
             )
         })
-        .map(|g| g.id.clone())
+        .map(|(g, _)| g.id.clone())
 }
 
-/// Meilleur enregistrement de l'artiste : titre identique, paru sur
-/// `album` s'il est donné, puis sur un album studio officiel, le plus
-/// ancien. Les remix et versions live passent après.
+/// Meilleur enregistrement de l'artiste : artiste exact, titre identique,
+/// paru sur `album` s'il est donné, puis sur un album studio officiel, le
+/// plus ancien. Les remix et versions live passent après.
 pub fn best_recording(
     found: &[MbRecording],
     title: &str,
@@ -583,11 +596,11 @@ pub fn best_recording(
     };
     found
         .iter()
-        .filter(|r| {
-            title_match(&r.title, title) > 0 && acceptable(r.score, &r.artist_credit, artist)
-        })
-        .min_by_key(|r| {
+        .map(|r| (r, artist_rank(r.score, &r.artist_credit, artist)))
+        .filter(|(r, rank)| *rank > 0 && title_match(&r.title, title) > 0)
+        .min_by_key(|(r, rank)| {
             (
+                Reverse(*rank),
                 Reverse(title_match(&r.title, title)),
                 !on_album(r),
                 !r.on_studio_album(),
@@ -598,7 +611,7 @@ pub fn best_recording(
                 },
             )
         })
-        .map(|r| r.id.clone())
+        .map(|(r, _)| r.id.clone())
 }
 
 #[cfg(test)]
@@ -690,6 +703,26 @@ mod tests {
         assert_eq!(find("Bella Lundgren"), None);
         // Sans mot à comparer, le score de MusicBrainz décide.
         assert_eq!(find("!!!").as_deref(), Some("other"));
+    }
+
+    #[test]
+    fn exact_artist_first() {
+        let found = vec![
+            rec(r#"{"id":"supply","title":"Playground Love","score":100,
+                "artist-credit":[{"name":"Air Supply","artist":{"id":"s","name":"Air Supply"}}]}"#),
+            rec(
+                r#"{"id":"air","title":"Playground Love (Remastered)","score":90,
+                "artist-credit":[{"name":"Air","artist":{"id":"a","name":"Air"}}]}"#,
+            ),
+        ];
+        assert_eq!(
+            best_recording(&found, "Playground Love", "Air", None).as_deref(),
+            Some("air")
+        );
+        assert_eq!(
+            best_recording(&found, "Playground Love", "Air Supply", None).as_deref(),
+            Some("supply")
+        );
     }
 
     #[test]

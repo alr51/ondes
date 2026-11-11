@@ -620,9 +620,12 @@ impl LibraryGroups {
                     },
                     cover: a.tracks.iter().find_map(|&i| data.tracks[i].cover.clone()),
                     tracks: Arc::new(a.tracks.clone()),
-                    info: Some(Target::Artist {
-                        id: None,
-                        name: a.name.clone(),
+                    // Pas de fiche pour le groupe des morceaux sans artiste.
+                    info: (a.name != ondes_library::model::UNKNOWN_ARTIST).then(|| {
+                        Target::Artist {
+                            id: None,
+                            name: a.name.clone(),
+                        }
                     }),
                 })
                 .collect(),

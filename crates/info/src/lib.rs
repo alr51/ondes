@@ -116,6 +116,9 @@ pub struct ArtistInfo {
     pub wikidata: Option<String>,
     /// Albums et EP, triés par nature puis par date.
     pub discography: Vec<ReleaseGroup>,
+    /// Nombre d'albums et EP sur MusicBrainz : plus que `discography` quand
+    /// la liste est tronquée (artistes très prolifiques, classique).
+    pub discography_total: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -285,6 +288,7 @@ impl Info {
             end: a.life_span.end,
             genres: musicbrainz::genres(&a.genres),
             wikidata: musicbrainz::wikidata_id(&a.relations),
+            discography_total: groups.release_group_count.max(discography.len()),
             discography,
         })
     }

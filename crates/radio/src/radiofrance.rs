@@ -142,6 +142,20 @@ pub struct OnAir {
     pub text: String,
     /// Fin prévue (secondes Unix).
     pub end: Option<i64>,
+    /// Pour une émission : où en sont les morceaux qu'elle contient.
+    pub songs: Songs,
+}
+
+/// Morceaux d'une station, quand c'est l'émission qui est à l'antenne.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Songs {
+    /// Pas de morceaux annoncés (ou c'est un morceau qui passe).
+    None,
+    /// Le dernier morceau connu a fini à cet instant : le suivant n'est
+    /// peut-être pas encore publié.
+    Ended(i64),
+    /// Le prochain morceau, déjà publié, commence à cet instant.
+    Next(i64),
 }
 
 #[derive(Debug, Deserialize)]
@@ -224,16 +238,30 @@ fn clean(s: Option<&str>) -> Option<String> {
 /// Le plus fin de ce qui passe à `now` : le morceau plutôt que l'émission
 /// qui le contient, l'émission entre deux morceaux.
 fn on_air(pull: &Pull, now: i64) -> Option<OnAir> {
-    pull.levels.iter().rev().find_map(|level| {
-        let step = pull.steps.get(level.items.get(level.position)?)?;
-        if !(step.start..step.end).contains(&now) {
-            return None;
+    let current = |level: &Level| pull.steps.get(level.items.get(level.position)?);
+    let mut songs = Songs::None;
+    for (depth, level) in pull.levels.iter().enumerate().rev() {
+        let Some(step) = current(level) else {
+            continue;
+        };
+        if (step.start..step.end).contains(&now) {
+            return Some(OnAir {
+                text: step.text()?,
+                end: Some(step.end),
+                songs,
+            });
         }
-        Some(OnAir {
-            text: step.text()?,
-            end: Some(step.end),
-        })
-    })
+        // Niveau le plus fin (les morceaux) : sa position dit si un morceau
+        // vient de finir ou va commencer.
+        if depth + 1 == pull.levels.len() {
+            songs = if step.start > now {
+                Songs::Next(step.start)
+            } else {
+                Songs::Ended(step.end)
+            };
+        }
+    }
+    None
 }
 
 /// Client `livemeta`. Les appels doivent tourner sur le runtime tokio.
@@ -266,7 +294,7 @@ impl RadioFrance {
             .map_err(|e| RadioError::Network(e.to_string()))?;
         let status = response.status();
         if !status.is_success() {
-            return Err(RadioError::Network(format!("HTTP {status}")));
+            return Err(RadioError::Status(status.as_u16()));
         }
         let pull: Pull = response
             .json()
@@ -339,6 +367,7 @@ mod tests {
             Some(OnAir {
                 text: "Nikki Giovanni - A certain peace / When I nap".into(),
                 end: Some(450),
+                songs: Songs::None,
             })
         );
         // Morceau terminé et liste pas encore à jour : rien plutôt qu'un titre périmé.
@@ -380,5 +409,13 @@ mod tests {
         let show = on_air(&p, 400).unwrap();
         assert_eq!(show.text, "La Science au labo · Décodage cérébral");
         assert_eq!(show.end, Some(3600));
+        assert_eq!(show.songs, Songs::Ended(300));
+        assert_eq!(on_air(&p, 50).unwrap().songs, Songs::Next(100));
+        // Sans niveau de morceaux : l'émission seule.
+        let p = pull(
+            r#"{"steps":{"show":{"title":"Le journal","start":0,"end":3600,"embedType":"expression"}},
+                "levels":[{"items":["show"],"position":0}]}"#,
+        );
+        assert_eq!(on_air(&p, 400).unwrap().songs, Songs::None);
     }
 }

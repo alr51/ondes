@@ -12,7 +12,7 @@ pub use browser::{Country, Language, RadioBrowser, SearchQuery, Tag};
 pub use favorites::Favorites;
 pub use history::{History, HistoryEntry, HistoryKind};
 pub use import::import_playlist;
-pub use radiofrance::{OnAir, RadioFrance, station_id as radio_france_station};
+pub use radiofrance::{OnAir, RadioFrance, Songs, station_id as radio_france_station};
 pub use station::Station;
 
 /// Erreurs de la crate.
@@ -22,6 +22,9 @@ pub enum RadioError {
     Network(String),
     #[error("réponse inattendue de Radio Browser : {0}")]
     Decode(String),
+    /// Refus du serveur (titres Radio France).
+    #[error("réponse HTTP {0}")]
+    Status(u16),
     #[error("base de données : {0}")]
     Db(#[from] rusqlite::Error),
     #[error("fichier illisible : {0}")]

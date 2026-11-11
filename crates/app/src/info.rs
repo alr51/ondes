@@ -59,14 +59,6 @@ impl Target {
         }
     }
 
-    fn set_id(&mut self, found: String) {
-        match self {
-            Target::Artist { id, .. } | Target::Album { id, .. } | Target::Track { id, .. } => {
-                *id = Some(found)
-            }
-        }
-    }
-
     /// Recherche équivalente sur le site de MusicBrainz.
     fn search_url(&self) -> String {
         match self {
@@ -125,12 +117,45 @@ enum Loaded {
     Track(TrackInfo),
 }
 
+/// Une fiche de la pile : ce qui a été demandé, et ce qui a été trouvé.
+struct Visit {
+    /// Demande d'origine, jamais modifiée : rouvrir la même fiche (Ctrl+I
+    /// sur le même morceau) ne l'empile pas une seconde fois.
+    asked: Target,
+    /// Fiche trouvée, avec son identifiant : le retour arrière ne cherche
+    /// plus. Peut être d'une autre nature (l'artiste d'un titre introuvable).
+    found: Option<Target>,
+}
+
+impl Visit {
+    fn new(asked: Target) -> Self {
+        Self { asked, found: None }
+    }
+
+    fn target(&self) -> &Target {
+        self.found.as_ref().unwrap_or(&self.asked)
+    }
+}
+
 impl Loaded {
-    fn id(&self) -> &str {
+    /// Cible de cette fiche, avec son identifiant.
+    fn target(&self) -> Target {
         match self {
-            Loaded::Artist(a) => &a.id,
-            Loaded::Album(a) => &a.id,
-            Loaded::Track(t) => &t.id,
+            Loaded::Artist(a) => Target::Artist {
+                id: Some(a.id.clone()),
+                name: a.name.clone(),
+            },
+            Loaded::Album(a) => Target::Album {
+                id: Some(a.id.clone()),
+                artist: a.artist.clone(),
+                title: a.title.clone(),
+            },
+            Loaded::Track(t) => Target::Track {
+                id: Some(t.id.clone()),
+                artist: t.artist.clone(),
+                title: t.title.clone(),
+                album: None,
+            },
         }
     }
 
@@ -153,9 +178,15 @@ enum State {
 
 enum Image {
     Pending,
+    /// N'existe pas (404).
     Missing,
+    /// Échec passager (réseau, service surchargé) : nouvel essai après.
+    Retry(std::time::Instant),
     Ready(PathBuf),
 }
+
+/// Délai avant de redemander une image dont le téléchargement a échoué.
+const IMAGE_RETRY: Duration = Duration::from_secs(30);
 
 /// Service partagé (cache disque dans `~/.cache/ondes/info`).
 struct GlobalInfo(Arc<Info>);
@@ -188,8 +219,13 @@ pub struct InfoOpened;
 pub struct InfoView {
     player: Entity<Player>,
     /// Fiches visitées ; la dernière est affichée.
-    stack: Vec<Target>,
+    stack: Vec<Visit>,
     state: State,
+    /// Remarque au-dessus de la fiche (titre introuvable, fiche de l'artiste).
+    note: Option<String>,
+    /// Morceaux de la bibliothèque liés à la fiche affichée, calculés au
+    /// chargement et après chaque scan (pas à chaque rendu).
+    owned: Vec<Track>,
     images: HashMap<String, Image>,
     show_others: bool,
     scroll: ScrollHandle,
@@ -209,12 +245,17 @@ impl InfoView {
             // Le bouton « Ce qui joue » suit la lecture ; les marques
             // « dans la bibliothèque » suivent les scans.
             cx.observe(&player, |_, _, cx| cx.notify()),
-            cx.observe(&LibraryModel::global(cx), |_, _, cx| cx.notify()),
+            cx.observe(&LibraryModel::global(cx), |this, _, cx| {
+                this.refresh_owned(cx);
+                cx.notify();
+            }),
         ];
         Self {
             player,
             stack: Vec::new(),
             state: State::Empty,
+            note: None,
+            owned: Vec::new(),
             images: HashMap::new(),
             show_others: false,
             scroll: ScrollHandle::new(),
@@ -231,8 +272,8 @@ impl InfoView {
 
     /// Nouvelle fiche, depuis l'extérieur de la page.
     pub fn open(&mut self, target: Target, cx: &mut Context<Self>) {
-        if self.stack.last() != Some(&target) {
-            self.stack.push(target);
+        if self.stack.last().is_none_or(|v| v.asked != target) {
+            self.stack.push(Visit::new(target));
             self.load(cx);
         }
         cx.emit(InfoOpened);
@@ -250,7 +291,7 @@ impl InfoView {
     }
 
     fn push(&mut self, target: Target, cx: &mut Context<Self>) {
-        self.stack.push(target);
+        self.stack.push(Visit::new(target));
         self.load(cx);
     }
 
@@ -265,8 +306,10 @@ impl InfoView {
         self.show_others = false;
         self.bio = None;
         self._bio = None;
+        self.note = None;
+        self.owned.clear();
         self.scroll.set_offset(point(px(0.), px(0.)));
-        let Some(target) = self.stack.last().cloned() else {
+        let Some(target) = self.stack.last().map(|v| v.target().clone()) else {
             self.state = State::Empty;
             cx.notify();
             return;
@@ -283,13 +326,16 @@ impl InfoView {
             let result = task.await;
             this.update(cx, |this, cx| {
                 this.state = match result {
-                    Ok(Ok(loaded)) => {
-                        // Identifiant trouvé : le retour arrière ne cherche plus.
+                    Ok(Ok((loaded, note))) => {
                         if let Some(top) = this.stack.last_mut() {
-                            top.set_id(loaded.id().to_string());
+                            top.found = Some(loaded.target());
                         }
+                        this.note = note;
                         this.load_bio(&loaded, cx);
-                        State::Ready(Box::new(loaded))
+                        this.state = State::Ready(Box::new(loaded));
+                        this.refresh_owned(cx);
+                        cx.notify();
+                        return;
                     }
                     Ok(Err(InfoError::NotFound)) => State::NotFound,
                     Ok(Err(e)) => {
@@ -334,10 +380,23 @@ impl InfoView {
         }));
     }
 
+    /// Morceaux de la bibliothèque liés à la fiche affichée.
+    fn refresh_owned(&mut self, cx: &App) {
+        self.owned = match &self.state {
+            State::Ready(loaded) => match &**loaded {
+                Loaded::Artist(a) => library_artist(&a.name, cx),
+                Loaded::Album(a) => library_album(&a.artist, &a.title, cx),
+                Loaded::Track(t) => library_track(&t.artist, &t.title, cx).into_iter().collect(),
+            },
+            _ => Vec::new(),
+        };
+    }
+
     /// Image du cache, téléchargée au premier affichage.
     fn image(&mut self, url: &str, cx: &mut Context<Self>) -> Option<PathBuf> {
         match self.images.get(url) {
             Some(Image::Ready(path)) => return Some(path.clone()),
+            Some(Image::Retry(at)) if std::time::Instant::now() >= *at => {}
             Some(_) => return None,
             None => {}
         }
@@ -349,7 +408,8 @@ impl InfoView {
         cx.spawn(async move |this, cx| {
             let image = match task.await {
                 Ok(Ok(Some(path))) => Image::Ready(path),
-                _ => Image::Missing,
+                Ok(Ok(None)) => Image::Missing,
+                _ => Image::Retry(std::time::Instant::now() + IMAGE_RETRY),
             };
             this.update(cx, |this, cx| {
                 this.images.insert(key, image);
@@ -362,21 +422,25 @@ impl InfoView {
     }
 }
 
-async fn fetch(info: &Info, target: Target) -> Result<Loaded, InfoError> {
+/// Fiche demandée, avec une remarque éventuelle. Un titre introuvable
+/// laisse place à la fiche de son artiste : c'est souvent le cas des
+/// œuvres classiques, annoncées sous le nom du compositeur alors que
+/// MusicBrainz crédite les interprètes.
+async fn fetch(info: &Info, target: Target) -> Result<(Loaded, Option<String>), InfoError> {
     match target {
         Target::Artist { id, name } => {
             let id = match id {
                 Some(id) => id,
                 None => info.find_artist(&name).await?,
             };
-            info.artist(&id).await.map(Loaded::Artist)
+            Ok((Loaded::Artist(info.artist(&id).await?), None))
         }
         Target::Album { id, artist, title } => {
             let id = match id {
                 Some(id) => id,
                 None => info.find_album(&artist, &title).await?,
             };
-            info.album(&id).await.map(Loaded::Album)
+            Ok((Loaded::Album(info.album(&id).await?), None))
         }
         Target::Track {
             id,
@@ -386,9 +450,20 @@ async fn fetch(info: &Info, target: Target) -> Result<Loaded, InfoError> {
         } => {
             let id = match id {
                 Some(id) => id,
-                None => info.find_track(&artist, &title, album.as_deref()).await?,
+                None => match info.find_track(&artist, &title, album.as_deref()).await {
+                    Ok(id) => id,
+                    Err(InfoError::NotFound) => {
+                        let id = info.find_artist(&artist).await?;
+                        let note = format!(
+                            "« {title} » est introuvable sur MusicBrainz : voici la fiche \
+                             de {artist}."
+                        );
+                        return Ok((Loaded::Artist(info.artist(&id).await?), Some(note)));
+                    }
+                    Err(e) => return Err(e),
+                },
             };
-            info.track(&id).await.map(Loaded::Track)
+            Ok((Loaded::Track(info.track(&id).await?), None))
         }
     }
 }
@@ -414,7 +489,18 @@ fn library_album(artist: &str, title: &str, cx: &App) -> Vec<Track> {
     let data = LibraryModel::global(cx).read(cx).data.clone();
     data.albums
         .iter()
-        .find(|a| same(&a.title, title) && a.artist.as_deref().is_none_or(|x| same(x, artist)))
+        .find(|a| {
+            same(&a.title, title)
+                && match a.artist.as_deref() {
+                    Some(x) => same(x, artist),
+                    // Album sans artiste : il faut au moins un morceau de cet artiste.
+                    None => a
+                        .tracks
+                        .iter()
+                        .filter_map(|&i| data.tracks[i].artist.as_deref())
+                        .any(|x| same(x, artist)),
+                }
+        })
         .map(|a| a.tracks.iter().map(|&i| data.tracks[i].clone()).collect())
         .unwrap_or_default()
 }
@@ -692,7 +778,7 @@ impl InfoView {
             facts.push(a.origin.join(", "));
         }
         facts.extend(active(a.begin.as_deref(), a.end.as_deref()));
-        let owned_tracks = library_artist(&a.name, cx);
+        let owned_tracks = self.owned.clone();
         let owned_albums: Vec<String> = {
             let mut titles: Vec<String> = owned_tracks
                 .iter()
@@ -787,6 +873,18 @@ impl InfoView {
                 .collect();
             body = body.child(h_flex().flex_wrap().gap_4().children(cards));
         }
+        if a.discography_total > a.discography.len() {
+            body = body.child(
+                div()
+                    .text_sm()
+                    .text_color(theme.muted_foreground)
+                    .child(format!(
+                        "{} parutions affichées sur {} : la liste complète est sur MusicBrainz.",
+                        a.discography.len(),
+                        a.discography_total
+                    )),
+            );
+        }
         body
     }
 
@@ -800,7 +898,7 @@ impl InfoView {
         }];
         facts.extend(a.date.as_deref().map(date_fr));
         facts.extend(a.label.clone());
-        let owned = library_album(&a.artist, &a.title, cx);
+        let owned = self.owned.clone();
         let owned_titles: Vec<String> = owned.iter().map(|t| fold(&t.title)).collect();
         let total: u64 = a.tracks.iter().filter_map(|t| t.length_ms).sum();
         if total > 0 {
@@ -915,7 +1013,7 @@ impl InfoView {
         if let Some(date) = &t.first_release {
             facts.push(format!("première sortie : {}", date_fr(date)));
         }
-        let owned = library_track(&t.artist, &t.title, cx);
+        let owned = self.owned.first().cloned();
         let artist_links = self.artist_links(&t.artists, &t.artist, cx);
 
         let header = h_flex().gap_5().items_center().child(cover).child(
@@ -1000,7 +1098,7 @@ impl Render for InfoView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme().clone();
         let can_play_now = Target::now_playing(self.player.read(cx)).is_some();
-        let top = self.stack.last().cloned();
+        let top = self.stack.last().map(|v| v.target().clone());
 
         // Fil d'Ariane : les trois dernières fiches.
         let trail: Vec<String> = self
@@ -1009,7 +1107,7 @@ impl Render for InfoView {
             .rev()
             .take(3)
             .rev()
-            .map(|t| t.label().to_string())
+            .map(|v| v.target().label().to_string())
             .collect();
         let external = match &self.state {
             State::Ready(loaded) => Some(loaded.musicbrainz()),
@@ -1113,6 +1211,19 @@ impl Render for InfoView {
                     Loaded::Album(a) => self.render_album(a, cx),
                     Loaded::Track(t) => self.render_track(t, cx),
                 };
+                let body = match self.note.clone() {
+                    Some(note) => v_flex().gap_4().child(
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .text_sm()
+                            .text_color(theme.muted_foreground)
+                            .child(Icon::new(IconName::Info).small())
+                            .child(note),
+                    ),
+                    None => v_flex(),
+                }
+                .child(body);
                 div()
                     .id("info-scroll")
                     .flex_1()

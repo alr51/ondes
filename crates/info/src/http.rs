@@ -5,7 +5,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use serde::de::DeserializeOwned;
 use sha2::{Digest, Sha256};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Semaphore};
 
 use crate::InfoError;
 
@@ -23,6 +23,9 @@ const MB_RETRIES: u32 = 7;
 /// Attente ajoutée à la cadence, par tentative déjà faite (plafonnée).
 const MB_BACKOFF: Duration = Duration::from_millis(400);
 const MB_BACKOFF_MAX: Duration = Duration::from_secs(2);
+/// Téléchargements d'images simultanés (une discographie en demande des
+/// dizaines d'un coup ; Cover Art Archive refuse au-delà).
+const IMAGE_DOWNLOADS: usize = 4;
 
 pub(crate) struct Http {
     client: reqwest::Client,
@@ -30,6 +33,7 @@ pub(crate) struct Http {
     /// Envoi de la dernière requête MusicBrainz ; le verrou les fait passer
     /// une à une.
     mb_last: Mutex<Option<Instant>>,
+    images: Semaphore,
 }
 
 impl Http {
@@ -58,6 +62,7 @@ impl Http {
             client,
             cache,
             mb_last: Mutex::new(None),
+            images: Semaphore::new(IMAGE_DOWNLOADS),
         })
     }
 
@@ -97,12 +102,17 @@ impl Http {
     pub async fn image(&self, url: &str) -> Result<Option<PathBuf>, InfoError> {
         let path = self.cache_path(url, "img");
         let missing = self.cache_path(url, "none");
-        if fresh(&path).is_some() {
+        if is_fresh(&path) {
             return Ok(Some(path));
         }
-        if fresh(&missing).is_some() {
+        if is_fresh(&missing) {
             return Ok(None);
         }
+        let _permit = self
+            .images
+            .acquire()
+            .await
+            .map_err(|e| InfoError::Network(e.to_string()))?;
         match self.get(url).await {
             Ok(bytes) => {
                 store(&path, &bytes);
@@ -167,12 +177,21 @@ impl Http {
     }
 }
 
+/// Fichier du cache encore valable (sa date suffit, sans le lire).
+fn is_fresh(path: &Path) -> bool {
+    std::fs::metadata(path)
+        .and_then(|m| m.modified())
+        .is_ok_and(|modified| {
+            SystemTime::now()
+                .duration_since(modified)
+                .unwrap_or_default()
+                < TTL
+        })
+}
+
+/// Contenu du fichier du cache s'il est encore valable.
 fn fresh(path: &Path) -> Option<Vec<u8>> {
-    let modified = std::fs::metadata(path).ok()?.modified().ok()?;
-    let age = SystemTime::now()
-        .duration_since(modified)
-        .unwrap_or_default();
-    (age < TTL).then(|| std::fs::read(path).ok()).flatten()
+    is_fresh(path).then(|| std::fs::read(path).ok()).flatten()
 }
 
 /// Vieillit le fichier pour qu'il ne lui reste que [`TTL_NOT_FOUND`] à

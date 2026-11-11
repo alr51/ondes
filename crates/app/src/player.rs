@@ -10,7 +10,7 @@ use ondes_audio::{
     TrackInfo,
 };
 use ondes_library::Track;
-use ondes_radio::{HistoryEntry, HistoryKind, Station};
+use ondes_radio::{HistoryEntry, HistoryKind, RadioError, Songs, Station};
 
 use crate::history::{self, HistoryModel};
 use crate::library::LibraryModel;
@@ -18,6 +18,10 @@ use crate::queue::{Queue, Repeat};
 use crate::radio::{Directory, RadioFranceApi};
 use crate::runtime::Rt;
 use crate::settings::{AudioSettings, LastSource, Settings};
+
+/// Autour d'un morceau Radio France (secondes) : l'émission qui le contient
+/// n'est pas annoncée, le morceau suivant étant sans doute imminent.
+const BETWEEN_SONGS: i64 = 120;
 
 /// Événement à signaler à l'utilisateur (notification dans la fenêtre).
 pub enum PlayerNotice {
@@ -56,6 +60,8 @@ pub struct Player {
     crossfade_same_album: bool,
     /// Le fichier en cours est déjà inscrit dans l'historique.
     logged: bool,
+    /// Temps réellement écouté du fichier en cours (les sauts ne comptent pas).
+    listened: Duration,
     /// Suivi des titres d'une station Radio France (pas d'ICY sur leurs flux).
     radio_france: Option<Task<()>>,
     _events: Task<()>,
@@ -105,6 +111,7 @@ impl Player {
             recording: None,
             crossfade_same_album: audio.crossfade_same_album,
             logged: false,
+            listened: Duration::ZERO,
             radio_france: None,
             state: PlaybackState::Idle,
             track: None,
@@ -135,8 +142,16 @@ impl Player {
                 if state == PlaybackState::Playing {
                     self.failures_in_row = 0;
                 }
-                if matches!(state, PlaybackState::Idle | PlaybackState::Ended) {
-                    self.radio_france = None;
+                // Plus de titres à suivre quand le direct ne joue plus (en
+                // pause, le flux est coupé) ; repris avec la lecture.
+                match state {
+                    PlaybackState::Idle | PlaybackState::Ended | PlaybackState::Paused => {
+                        self.radio_france = None
+                    }
+                    PlaybackState::Playing if self.radio_france.is_none() => {
+                        self.watch_radio_france(cx)
+                    }
+                    _ => {}
                 }
                 match state {
                     PlaybackState::Loading => self.error = None,
@@ -148,6 +163,7 @@ impl Player {
             Event::Track(track) => {
                 self.now_playing = None;
                 self.logged = false;
+                self.listened = Duration::ZERO;
                 self.track = Some(track);
                 self.pending = None;
                 self.position = Duration::ZERO;
@@ -167,6 +183,7 @@ impl Player {
                 self.failures_in_row = 0;
                 self.now_playing = None;
                 self.logged = false;
+                self.listened = Duration::ZERO;
                 self.track = Some(track);
                 self.pending = None;
                 self.position = Duration::ZERO;
@@ -178,6 +195,14 @@ impl Player {
                 cx.emit(PlayerNotice::Recorded(done));
             }
             Event::Position(pos) => {
+                // Seule l'avance régulière de la lecture compte comme écoute ;
+                // un saut (ou un retour) n'ajoute rien.
+                if let Some(step) = pos.checked_sub(self.position)
+                    && step <= Duration::from_secs(2)
+                    && self.state == PlaybackState::Playing
+                {
+                    self.listened += step;
+                }
                 self.position = pos;
                 self.log_file(cx);
             }
@@ -252,24 +277,45 @@ impl Player {
                 };
                 let wait = match task.await {
                     Ok(Ok(Some(on_air))) => {
-                        let end = on_air.end;
-                        if this
-                            .update(cx, |p, cx| p.announce(on_air.text, cx))
-                            .is_err()
-                        {
-                            return;
+                        let now = history::now();
+                        // Juste avant ou après un morceau, l'émission ne
+                        // s'affiche pas : le morceau suivant arrive sans doute.
+                        let soon = match on_air.songs {
+                            Songs::Ended(end) if now - end < BETWEEN_SONGS => Some(20),
+                            Songs::Next(start) if start - now < BETWEEN_SONGS => {
+                                Some((start - now + 3).clamp(5, BETWEEN_SONGS))
+                            }
+                            _ => None,
+                        };
+                        if let Some(wait) = soon {
+                            wait
+                        } else {
+                            let end = on_air.end;
+                            let songs = on_air.songs;
+                            if this
+                                .update(cx, |p, cx| p.announce(on_air.text, cx))
+                                .is_err()
+                            {
+                                return;
+                            }
+                            // Un peu après la fin prévue, pour laisser l'API changer.
+                            let wait = end.map_or(60, |end| (end - now + 5).clamp(15, 180));
+                            // Une émission qui diffuse des morceaux : le
+                            // prochain peut commencer à tout moment.
+                            if songs == Songs::None {
+                                wait
+                            } else {
+                                wait.min(60)
+                            }
                         }
-                        // Un peu après la fin prévue, pour laisser l'API changer.
-                        end.map_or(60, |end| (end - history::now() + 5).clamp(15, 180))
                     }
                     Ok(Ok(None)) => 30,
                     Ok(Err(e)) => {
                         tracing::warn!(id, "titres Radio France : {e}");
                         // Refus du serveur : on se fait oublier un moment.
-                        if e.to_string().contains("HTTP 4") {
-                            600
-                        } else {
-                            60
+                        match e {
+                            RadioError::Status(400..500) => 600,
+                            _ => 60,
                         }
                     }
                     Err(_) => return,
@@ -309,7 +355,7 @@ impl Player {
         let needed = track
             .duration
             .map_or(history::LISTENED, |d| d.div_f32(2.).min(history::LISTENED));
-        if self.logged || self.position < needed {
+        if self.logged || self.listened < needed {
             return;
         }
         self.logged = true;

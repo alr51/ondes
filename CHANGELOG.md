@@ -7,6 +7,29 @@ automatiquement). Avant de publier une version, renommer la section
 
 ## [Non publié]
 
+## [0.7.1] — 2026-11-11
+
+### Corrections
+- Radio France en pause : les titres ne sont plus suivis (ni inscrits dans
+  l'historique) tant que la lecture est en pause.
+- Radio France : entre deux morceaux, le suivant est guetté de près au lieu
+  d'afficher l'émission pendant jusqu'à 3 minutes.
+- Historique : un morceau n'y entre qu'après 30 s réellement écoutées ; un
+  saut dans le morceau ne compte plus.
+- Infos : rouvrir la fiche de ce qui joue ne l'empile plus une seconde fois.
+- Infos : un titre introuvable (souvent une œuvre classique, annoncée sous le
+  nom du compositeur) ouvre la fiche de l'artiste, avec une remarque.
+- Infos : l'artiste exact passe avant un homonyme partiel (« Air » et non
+  « Air Supply ») ; un album sans artiste dans la bibliothèque n'est plus
+  confondu avec un autre du même titre ; pas de fiche pour « Artiste inconnu ».
+- Infos : discographie tronquée signalée ; pochettes téléchargées quatre par
+  quatre, et redemandées après un échec passager.
+
+### Performances
+- Page Infos : morceaux de la bibliothèque liés à la fiche calculés une fois
+  (et après chaque scan) au lieu d'à chaque seconde de lecture.
+- Historique : index sur la source pour le dédoublonnage.
+
 ## [0.7.0] — 2026-11-11
 
 ### Historique d'écoute
