@@ -7,6 +7,14 @@ automatiquement). Avant de publier une version, renommer la section
 
 ## [Non publié]
 
+## [0.7.2] — 2026-11-11
+
+### Corrections
+- Infos : les titres annoncés avec tous leurs musiciens (« Herbie Mann &
+  Cissy Houston & … », fréquent sur FIP) sont retrouvés : si la liste entière
+  ne donne rien, le premier nom est cherché seul, pour le titre comme pour la
+  fiche de l'artiste.
+
 ## [0.7.1] — 2026-11-11
 
 ### Corrections

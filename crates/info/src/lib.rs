@@ -232,7 +232,18 @@ impl Info {
     // ------------------------------------------------------------ artiste
 
     /// Identifiant de l'artiste le plus probable pour ce nom (ou cet alias).
+    ///
+    /// Pour une liste de musiciens (« A & B & C »), le premier est cherché
+    /// si la liste entière ne donne rien.
     pub async fn find_artist(&self, name: &str) -> Result<String, InfoError> {
+        let result = self.find_artist_named(name).await;
+        match (result, first_artist(name)) {
+            (Err(InfoError::NotFound), Some(first)) => self.find_artist_named(first).await,
+            (result, _) => result,
+        }
+    }
+
+    async fn find_artist_named(&self, name: &str) -> Result<String, InfoError> {
         self.search(
             "artist",
             &format!("{} OR {}", clause("artist", name), clause("alias", name)),
@@ -359,8 +370,25 @@ impl Info {
     /// Une seule recherche : le titre exact est favorisé, mais ses mots
     /// suffisent — les titres des radios diffèrent souvent de MusicBrainz
     /// par une apostrophe, un tiret ou une précision (« [ft. …] »,
-    /// « (club mix) »).
+    /// « (club mix) »). Les radios créditent aussi souvent tous les
+    /// musiciens (« A & B & C ») là où MusicBrainz ne nomme que le premier :
+    /// celui-ci est cherché seul si la liste entière ne donne rien.
     pub async fn find_track(
+        &self,
+        artist: &str,
+        title: &str,
+        album: Option<&str>,
+    ) -> Result<String, InfoError> {
+        let result = self.find_track_by(artist, title, album).await;
+        match (result, first_artist(artist)) {
+            (Err(InfoError::NotFound), Some(first)) => {
+                self.find_track_by(first, title, album).await
+            }
+            (result, _) => result,
+        }
+    }
+
+    async fn find_track_by(
         &self,
         artist: &str,
         title: &str,
@@ -412,6 +440,28 @@ impl Info {
     }
 }
 
+/// Premier nom d'une liste de musiciens (« A & B », « A, B », « A feat.
+/// B », « A / B ») ; `None` s'il n'y en a qu'un.
+fn first_artist(names: &str) -> Option<&str> {
+    // Minuscules ASCII seulement : les positions restent celles de `names`.
+    let lower = names.to_ascii_lowercase();
+    [
+        " & ",
+        ", ",
+        " / ",
+        " feat. ",
+        " feat ",
+        " ft. ",
+        " featuring ",
+    ]
+    .iter()
+    // Les séparateurs sont en ASCII : même position dans `lower`.
+    .filter_map(|sep| lower.find(sep))
+    .min()
+    .map(|at| names[..at].trim())
+    .filter(|first| !first.is_empty())
+}
+
 /// Critère de recherche sur un champ : la phrase exacte, favorisée, ou
 /// ses mots (sans ponctuation ni précisions) ; la phrase seule s'il ne
 /// reste aucun mot (« !!! »).
@@ -433,6 +483,27 @@ mod tests {
             r#"recording:("Sweet Rub-A-Dub [ft. X]"^4 OR (sweet rub a dub))"#
         );
         assert_eq!(super::clause("artist", "!!!"), r#"artist:("!!!")"#);
+    }
+
+    #[test]
+    fn first_artists() {
+        use super::first_artist;
+        assert_eq!(
+            first_artist("Herbie Mann & Cissy Houston & Pat Rebillot"),
+            Some("Herbie Mann")
+        );
+        assert_eq!(
+            first_artist("Isabella Lundgren, Carl Bagge"),
+            Some("Isabella Lundgren")
+        );
+        assert_eq!(
+            first_artist("Black Roots Feat. Dub Judah"),
+            Some("Black Roots")
+        );
+        assert_eq!(first_artist("Massive Attack"), None);
+        assert_eq!(first_artist("Ébène & Co"), Some("Ébène"));
+        assert_eq!(first_artist(" & X"), None);
+        assert_eq!(first_artist("İlhan & B"), Some("İlhan"));
     }
 
     #[test]

@@ -454,11 +454,13 @@ async fn fetch(info: &Info, target: Target) -> Result<(Loaded, Option<String>), 
                     Ok(id) => id,
                     Err(InfoError::NotFound) => {
                         let id = info.find_artist(&artist).await?;
+                        let found = info.artist(&id).await?;
                         let note = format!(
                             "« {title} » est introuvable sur MusicBrainz : voici la fiche \
-                             de {artist}."
+                             de {}.",
+                            found.name
                         );
-                        return Ok((Loaded::Artist(info.artist(&id).await?), Some(note)));
+                        return Ok((Loaded::Artist(found), Some(note)));
                     }
                     Err(e) => return Err(e),
                 },

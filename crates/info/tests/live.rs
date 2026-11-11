@@ -85,3 +85,21 @@ async fn not_found_is_short_lived() {
     assert_eq!(ages, [13], "vieillie pour expirer dans un jour");
     let _ = std::fs::remove_dir_all(cache);
 }
+
+/// Liste de musiciens annoncée par FIP, là où MusicBrainz ne crédite que
+/// le premier.
+#[tokio::test]
+#[ignore = "réseau"]
+async fn musician_list() {
+    let cache = std::env::temp_dir().join(format!("ondes-info-list-{}", std::process::id()));
+    let info = Info::new(cache.clone()).unwrap();
+    let artist = "Herbie Mann & Cissy Houston & Pat Rebillot & David Newman & Michael Richard";
+    let found = info
+        .find_track(artist, "The butterfly in a stone garden", None)
+        .await;
+    println!("titre : {found:?}");
+    let id = info.find_artist(artist).await.unwrap();
+    let a = info.artist(&id).await.unwrap();
+    assert_eq!(a.name, "Herbie Mann");
+    let _ = std::fs::remove_dir_all(cache);
+}
