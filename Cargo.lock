@@ -4722,7 +4722,7 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
 name = "ondes"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4754,7 +4754,7 @@ dependencies = [
 
 [[package]]
 name = "ondes-audio"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "flume",
  "ondes-sources",
@@ -4766,7 +4766,7 @@ dependencies = [
 
 [[package]]
 name = "ondes-core"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "thiserror 2.0.21",
  "tokio",
@@ -4775,7 +4775,7 @@ dependencies = [
 
 [[package]]
 name = "ondes-info"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "ondes-library",
  "reqwest",
@@ -4789,7 +4789,7 @@ dependencies = [
 
 [[package]]
 name = "ondes-library"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "image",
  "lofty",
@@ -4803,7 +4803,7 @@ dependencies = [
 
 [[package]]
 name = "ondes-radio"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "ondes-sources",
  "reqwest",
@@ -4817,7 +4817,7 @@ dependencies = [
 
 [[package]]
 name = "ondes-sources"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "bytes",
  "flume",
@@ -4832,7 +4832,7 @@ dependencies = [
 
 [[package]]
 name = "ondes-visual"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "pollster 1.0.1",
  "thiserror 2.0.21",
