@@ -7,6 +7,8 @@ automatiquement). Avant de publier une version, renommer la section
 
 ## [Non publié]
 
+## [0.8.0] — 2026-11-11
+
 ### Nouveautés
 - Minuteur de mise en veille : pause dans 15 min à 2 h, après un fondu de
   sortie de 30 s (le volume est ensuite rétabli pour la reprise), ou arrêt à
