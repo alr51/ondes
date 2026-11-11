@@ -282,7 +282,7 @@
         <article class="feature">
           <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg></div>
           <h3>Favoris et titre en cours</h3>
-          <p>Garde tes stations préférées, ajoute un flux à la main ou importe une playlist <code>.m3u</code> / <code>.pls</code>. Le morceau diffusé s'affiche en direct.</p>
+          <p>Garde tes stations préférées, ajoute un flux à la main ou importe une playlist <code>.m3u</code> / <code>.pls</code>. Le morceau diffusé s'affiche en direct, y compris sur FIP et les radios de Radio France.</p>
         </article>
         <article class="feature">
           <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="2"/></svg></div>
@@ -310,6 +310,16 @@
           <p>Un clic (ou <kbd>Ctrl</kbd> <kbd>Maj</kbd> <kbd>R</kbd>) et le direct est copié tel quel dans ta musique, sans perte de qualité.</p>
         </article>
         <article class="feature">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg></div>
+          <h3>Qui joue, sur quel album ?</h3>
+          <p>La page Infos (<kbd>Ctrl</kbd> <kbd>I</kbd>) présente l'artiste, l'album ou le titre en cours : biographie, discographie, pistes et crédits, tirés de MusicBrainz et de Wikipédia.</p>
+        </article>
+        <article class="feature">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg></div>
+          <h3>Historique d'écoute</h3>
+          <p>Retrouve le morceau entendu ce matin à la radio : chaque titre écouté est noté avec son heure, et se relance d'un clic. L'historique reste sur ton ordinateur.</p>
+        </article>
+        <article class="feature">
           <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/></svg></div>
           <h3>Fait pour le clavier</h3>
           <p>Une palette de commandes (<kbd>Ctrl</kbd> <kbd>K</kbd>) pour tout faire sans souris, et les touches multimédia du clavier qui pilotent la lecture.</p>
@@ -322,6 +332,14 @@
       </div>
 
       <div class="gallery">
+        <figure>
+          <img src="images/info-dark.webp" width="1280" height="837" loading="lazy" alt="La page « Infos » d'Ondes en thème sombre : la fiche d'Erik Satie, avec sa photo, ses dates, le début de sa biographie Wikipédia et les pochettes de sa discographie.">
+          <figcaption>La fiche d'un artiste : biographie et discographie.</figcaption>
+        </figure>
+        <figure>
+          <img src="images/history-light.webp" width="1280" height="837" loading="lazy" alt="La page « Historique » d'Ondes en thème clair : les titres écoutés aujourd'hui et hier, à la radio et dans la bibliothèque, avec leur heure.">
+          <figcaption>L'historique des titres écoutés, jour par jour.</figcaption>
+        </figure>
         <figure>
           <img src="images/now-dark.webp" width="1280" height="837" loading="lazy" alt="La page « En cours » d'Ondes en thème sombre : le visualiseur Nébuleuse, animé par la musique, avec le titre du morceau en dessous.">
           <figcaption>La page En cours et son visualiseur, à passer en plein écran.</figcaption>
@@ -399,6 +417,8 @@ chmod +x ondes_*_x86_64.AppImage && ./ondes_*_x86_64.AppImage</pre>
         <div class="key-row"><span>Écouter une URL / un fichier</span><span><kbd>Ctrl</kbd> <kbd>L</kbd> / <kbd>O</kbd></span></div>
         <div class="key-row"><span>Enregistrer le direct</span><span><kbd>Ctrl</kbd> <kbd>Maj</kbd> <kbd>R</kbd></span></div>
         <div class="key-row"><span>Page « En cours »</span><span><kbd>Ctrl</kbd> <kbd>0</kbd></span></div>
+        <div class="key-row"><span>Infos sur ce qui joue</span><span><kbd>Ctrl</kbd> <kbd>I</kbd></span></div>
+        <div class="key-row"><span>Historique d'écoute</span><span><kbd>Ctrl</kbd> <kbd>7</kbd></span></div>
         <div class="key-row"><span>Visualiseur en mode immersif</span><span><kbd>Ctrl</kbd> <kbd>Maj</kbd> <kbd>V</kbd></span></div>
         <div class="key-row"><span>Vue compacte</span><span><kbd>Ctrl</kbd> <kbd>Maj</kbd> <kbd>M</kbd></span></div>
         <div class="key-row"><span>Plier la barre latérale</span><span><kbd>Ctrl</kbd> <kbd>B</kbd></span></div>
@@ -421,7 +441,7 @@ chmod +x ondes_*_x86_64.AppImage && ./ondes_*_x86_64.AppImage</pre>
 <footer>
   <div class="wrap">
     <span>Ondes — logiciel libre, licence MIT ou Apache-2.0.</span>
-    <span>Annuaire des stations : <a href="https://www.radio-browser.info/">Radio Browser</a> · <a href="https://github.com/alr51/ondes">GitHub</a></span>
+    <span>Annuaire des stations : <a href="https://www.radio-browser.info/">Radio Browser</a> · Infos : <a href="https://musicbrainz.org/">MusicBrainz</a>, <a href="https://fr.wikipedia.org/">Wikipédia</a> · <a href="https://github.com/alr51/ondes">GitHub</a></span>
   </div>
 </footer>
 
