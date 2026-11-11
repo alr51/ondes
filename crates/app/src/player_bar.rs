@@ -7,6 +7,7 @@ use gpui_kit::component::{
     ActiveTheme, Disableable, Icon, Selectable, Sizable, StyledExt,
     button::{Button, ButtonVariants},
     h_flex,
+    menu::DropdownMenu as _,
     slider::{Slider, SliderEvent, SliderState},
     spinner::Spinner,
     v_flex,
@@ -15,7 +16,10 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use ondes_audio::PlaybackState;
 
-use crate::player::Player;
+use crate::actions::{
+    CancelSleep, SleepEndOfTrack, SleepIn15, SleepIn30, SleepIn45, SleepIn60, SleepIn90, SleepIn120,
+};
+use crate::player::{Player, Sleep};
 use crate::queue::Repeat;
 use crate::radio::FavoritesModel;
 use crate::radio_explore::toggle_favorite;
@@ -108,6 +112,54 @@ impl PlayerBar {
             .filter(|t| !t.live)
             .and_then(|t| t.duration)
             .filter(|d| !d.is_zero())
+    }
+
+    /// Minuteur de mise en veille : menu des durées, temps restant affiché.
+    fn sleep_button(&self, label: Option<String>) -> impl IntoElement {
+        let player = self.player.clone();
+        let active = label.is_some();
+        let button = Button::new("sleep")
+            .icon(if active {
+                IconName::Timer
+            } else {
+                IconName::MoonStar
+            })
+            .ghost()
+            .small()
+            .selected(active)
+            .tooltip(match &label {
+                Some(label) => format!("Minuteur : {label}"),
+                None => "Minuteur de mise en veille".into(),
+            })
+            .when_some(label, |b, label| b.label(label));
+        button.dropdown_menu_with_anchor(Anchor::BottomRight, move |menu, _, cx| {
+            let p = player.read(cx);
+            let end_of_track = p.can_sleep_end_of_track();
+            let current = p.sleep;
+            let menu = match p.sleep_label() {
+                Some(label) => menu.label(format!("Pause dans {label}")),
+                None => menu.label("Mettre en pause dans…"),
+            };
+            menu.menu("15 min", Box::new(SleepIn15))
+                .menu("30 min", Box::new(SleepIn30))
+                .menu("45 min", Box::new(SleepIn45))
+                .menu("1 h", Box::new(SleepIn60))
+                .menu("1 h 30", Box::new(SleepIn90))
+                .menu("2 h", Box::new(SleepIn120))
+                .separator()
+                .menu_with_check_and_disabled(
+                    "Fin du morceau",
+                    current == Some(Sleep::EndOfTrack),
+                    Box::new(SleepEndOfTrack),
+                    !end_of_track,
+                )
+                .separator()
+                .menu_with_disabled(
+                    "Annuler le minuteur",
+                    Box::new(CancelSleep),
+                    current.is_none(),
+                )
+        })
     }
 
     fn volume_icon(volume: f32) -> IconName {
@@ -207,6 +259,7 @@ impl Render for PlayerBar {
         let recording = p.recording.is_some();
         let can_record = p.can_record() || recording;
         let info = crate::info::Target::now_playing(p);
+        let sleep = p.sleep_label();
 
         let subtitle = match status(p) {
             Status::Hint(text) => div()
@@ -462,6 +515,7 @@ impl Render for PlayerBar {
                     .gap_2()
                     .items_center()
                     .child(div().mr_2().child(self.spectrum.clone()))
+                    .child(self.sleep_button(sleep))
                     .child(
                         Button::new("visualizer")
                             .icon(IconName::Sparkles)

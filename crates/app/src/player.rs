@@ -2,7 +2,7 @@
 //! reflète ses événements dans une entité GPUI observable.
 
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use gpui_kit::*;
 use ondes_audio::{
@@ -23,12 +23,28 @@ use crate::settings::{AudioSettings, LastSource, Settings};
 /// n'est pas annoncée, le morceau suivant étant sans doute imminent.
 const BETWEEN_SONGS: i64 = 120;
 
+/// Fondu de sortie du minuteur de mise en veille, avant la pause.
+const SLEEP_FADE: Duration = Duration::from_secs(30);
+/// Paliers du fondu de sortie.
+const SLEEP_FADE_STEPS: u32 = 60;
+
+/// Minuteur de mise en veille.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Sleep {
+    /// Pause à cette heure (après un fondu de sortie).
+    At(Instant),
+    /// Arrêt à la fin du morceau en cours (fichiers seulement).
+    EndOfTrack,
+}
+
 /// Événement à signaler à l'utilisateur (notification dans la fenêtre).
 pub enum PlayerNotice {
     /// Morceau de la file illisible, passé automatiquement.
     Skipped { title: String, reason: String },
     /// Enregistrement d'un direct terminé.
     Recorded(Recorded),
+    /// Information brève (minuteur de mise en veille).
+    Info(String),
 }
 
 impl EventEmitter<PlayerNotice> for Player {}
@@ -64,6 +80,10 @@ pub struct Player {
     listened: Duration,
     /// Suivi des titres d'une station Radio France (pas d'ICY sur leurs flux).
     radio_france: Option<Task<()>>,
+    /// Minuteur de mise en veille en cours.
+    pub sleep: Option<Sleep>,
+    /// Attente et fondu de sortie du minuteur.
+    sleep_task: Option<Task<()>>,
     _events: Task<()>,
 }
 
@@ -113,6 +133,8 @@ impl Player {
             logged: false,
             listened: Duration::ZERO,
             radio_france: None,
+            sleep: None,
+            sleep_task: None,
             state: PlaybackState::Idle,
             track: None,
             station: None,
@@ -131,6 +153,16 @@ impl Player {
 
     fn apply(&mut self, event: Event, cx: &mut Context<Self>) {
         match event {
+            // Minuteur « fin du morceau » : rien n'a été préchargé, on s'arrête là.
+            Event::State(PlaybackState::Ended) if self.sleep == Some(Sleep::EndOfTrack) => {
+                self.state = PlaybackState::Ended;
+                self.sleep = None;
+                tracing::info!("minuteur : arrêt à la fin du morceau");
+                self.sync_next();
+                cx.emit(PlayerNotice::Info(
+                    "Minuteur : lecture arrêtée à la fin du morceau".into(),
+                ));
+            }
             Event::State(PlaybackState::Ended) if !self.queue.is_empty() => {
                 self.state = PlaybackState::Ended;
                 if self.queue.next(true).is_some() {
@@ -167,6 +199,13 @@ impl Player {
                 self.track = Some(track);
                 self.pending = None;
                 self.position = Duration::ZERO;
+                // Un direct n'a pas de fin de morceau.
+                if self.sleep == Some(Sleep::EndOfTrack)
+                    && self.track.as_ref().is_some_and(|t| t.live)
+                {
+                    tracing::info!("minuteur « fin du morceau » annulé : direct");
+                    self.sleep = None;
+                }
                 self.sync_next();
                 self.watch_radio_france(cx);
             }
@@ -535,6 +574,10 @@ impl Player {
 
     /// Indique au moteur le morceau à précharger et à enchaîner.
     fn sync_next(&self) {
+        if self.sleep == Some(Sleep::EndOfTrack) {
+            self.send(Command::SetNext(None));
+            return;
+        }
         let next = self
             .queue
             .current()
@@ -612,8 +655,119 @@ impl Player {
         self.send(Command::TogglePlay);
     }
 
-    pub fn stop(&mut self, _: &mut Context<Self>) {
+    pub fn stop(&mut self, cx: &mut Context<Self>) {
+        self.cancel_sleep(cx);
         self.send(Command::Stop);
+    }
+
+    /// Met la lecture en pause dans `after`, après un fondu de sortie.
+    pub fn sleep_in(&mut self, after: Duration, cx: &mut Context<Self>) {
+        self.cancel_sleep(cx);
+        let deadline = Instant::now() + after;
+        self.sleep = Some(Sleep::At(deadline));
+        tracing::info!(minutes = after.as_secs() / 60, "minuteur réglé");
+        self.sleep_task = Some(cx.spawn(async move |this, cx| {
+            // Réveils espacés : de quoi rafraîchir le temps restant affiché.
+            loop {
+                let left = deadline.saturating_duration_since(Instant::now());
+                if left <= SLEEP_FADE {
+                    break;
+                }
+                let wait = (left - SLEEP_FADE).min(Duration::from_secs(10));
+                cx.background_executor().timer(wait).await;
+                if this.update(cx, |_, cx| cx.notify()).is_err() {
+                    return;
+                }
+            }
+            let fade = deadline.saturating_duration_since(Instant::now());
+            for step in 1..=SLEEP_FADE_STEPS {
+                let fading = this.update(cx, |p, _| {
+                    // En pause ou arrêté : rien à faire baisser.
+                    let fading = p.state.is_active();
+                    if fading {
+                        let gain = 1. - step as f32 / SLEEP_FADE_STEPS as f32;
+                        p.send(Command::SetVolume(p.volume * gain));
+                    }
+                    fading
+                });
+                match fading {
+                    Ok(true) => {}
+                    Ok(false) => break,
+                    Err(_) => return,
+                }
+                cx.background_executor()
+                    .timer(fade / SLEEP_FADE_STEPS)
+                    .await;
+            }
+            this.update(cx, |p, cx| p.fall_asleep(cx)).ok();
+        }));
+        self.sync_next();
+        cx.emit(PlayerNotice::Info(format!(
+            "Minuteur : pause dans {}",
+            sleep_duration(after)
+        )));
+        cx.notify();
+    }
+
+    /// Arrête la lecture à la fin du morceau en cours (fichier seulement).
+    pub fn sleep_end_of_track(&mut self, cx: &mut Context<Self>) {
+        if !self.can_sleep_end_of_track() {
+            cx.emit(PlayerNotice::Info(
+                "Minuteur : pas de morceau en cours (un direct n'a pas de fin)".into(),
+            ));
+            return;
+        }
+        self.cancel_sleep(cx);
+        self.sleep = Some(Sleep::EndOfTrack);
+        tracing::info!("minuteur réglé : fin du morceau");
+        self.sync_next();
+        cx.emit(PlayerNotice::Info(
+            "Minuteur : arrêt à la fin du morceau".into(),
+        ));
+        cx.notify();
+    }
+
+    /// Un fichier joue-t-il (le minuteur « fin du morceau » a-t-il un sens) ?
+    pub fn can_sleep_end_of_track(&self) -> bool {
+        self.track.as_ref().is_some_and(|t| !t.live) && self.state != PlaybackState::Ended
+    }
+
+    /// Annule le minuteur (et le fondu de sortie en cours, s'il y en a un).
+    pub fn cancel_sleep(&mut self, cx: &mut Context<Self>) {
+        if self.sleep.take().is_none() {
+            return;
+        }
+        tracing::info!("minuteur annulé");
+        self.sleep_task = None;
+        self.send(Command::SetVolume(self.volume));
+        self.sync_next();
+        cx.notify();
+    }
+
+    /// Fin du minuteur : pause, puis volume rétabli pour la reprise.
+    fn fall_asleep(&mut self, cx: &mut Context<Self>) {
+        // La tâche du minuteur, qui nous appelle, se termine d'elle-même.
+        self.sleep = None;
+        let active = self.state.is_active();
+        tracing::info!(pause = active, "minuteur écoulé");
+        if active {
+            self.send(Command::Pause);
+            cx.emit(PlayerNotice::Info(
+                "Minuteur : lecture mise en pause".into(),
+            ));
+        }
+        self.send(Command::SetVolume(self.volume));
+        cx.notify();
+    }
+
+    /// Temps restant du minuteur, à afficher (« 25 min », « fin du morceau »).
+    pub fn sleep_label(&self) -> Option<String> {
+        match self.sleep? {
+            Sleep::At(deadline) => Some(sleep_duration(
+                deadline.saturating_duration_since(Instant::now()),
+            )),
+            Sleep::EndOfTrack => Some("fin du morceau".into()),
+        }
     }
 
     pub fn set_volume(&mut self, volume: f32, cx: &mut Context<Self>) {
@@ -673,6 +827,16 @@ impl Player {
     }
 }
 
+/// Durée du minuteur, arrondie à la minute supérieure : « 25 min », « 1 h 05 ».
+fn sleep_duration(d: Duration) -> String {
+    let minutes = d.as_secs().div_ceil(60);
+    match minutes {
+        0..60 => format!("{minutes} min"),
+        _ if minutes.is_multiple_of(60) => format!("{} h", minutes / 60),
+        _ => format!("{} h {:02}", minutes / 60, minutes % 60),
+    }
+}
+
 /// Nom utilisable comme nom de fichier sur tous les systèmes.
 fn file_name_safe(name: &str) -> String {
     let cleaned: String = name
@@ -694,6 +858,17 @@ fn file_name_safe(name: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn sleep_durations() {
+        use std::time::Duration;
+        let d = super::sleep_duration;
+        assert_eq!(d(Duration::from_secs(1)), "1 min");
+        assert_eq!(d(Duration::from_secs(25 * 60)), "25 min");
+        assert_eq!(d(Duration::from_secs(25 * 60 - 30)), "25 min");
+        assert_eq!(d(Duration::from_secs(3600)), "1 h");
+        assert_eq!(d(Duration::from_secs(3900)), "1 h 05");
+    }
+
     #[test]
     fn safe_file_names() {
         assert_eq!(

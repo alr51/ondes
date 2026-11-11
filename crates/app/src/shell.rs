@@ -2,6 +2,7 @@
 
 use std::cell::Cell;
 use std::rc::Rc;
+use std::time::Duration;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::base::component_traits::Collapsible as _;
@@ -296,6 +297,9 @@ impl Shell {
                             )),
                         };
                         window.push_notification(note, cx);
+                    }
+                    PlayerNotice::Info(text) => {
+                        window.push_notification(Notification::info(text.clone()), cx)
                     }
                 },
             ),
@@ -650,6 +654,21 @@ impl Shell {
         on_player!(ToggleShuffle, |p, cx| p.toggle_shuffle(cx));
         on_player!(CycleRepeat, |p, cx| p.cycle_repeat(cx));
         on_player!(ToggleRecording, |p, cx| p.toggle_recording(cx));
+        const MIN: u64 = 60;
+        on_player!(SleepIn15, |p, cx| p
+            .sleep_in(Duration::from_secs(15 * MIN), cx));
+        on_player!(SleepIn30, |p, cx| p
+            .sleep_in(Duration::from_secs(30 * MIN), cx));
+        on_player!(SleepIn45, |p, cx| p
+            .sleep_in(Duration::from_secs(45 * MIN), cx));
+        on_player!(SleepIn60, |p, cx| p
+            .sleep_in(Duration::from_secs(60 * MIN), cx));
+        on_player!(SleepIn90, |p, cx| p
+            .sleep_in(Duration::from_secs(90 * MIN), cx));
+        on_player!(SleepIn120, |p, cx| p
+            .sleep_in(Duration::from_secs(120 * MIN), cx));
+        on_player!(SleepEndOfTrack, |p, cx| p.sleep_end_of_track(cx));
+        on_player!(CancelSleep, |p, cx| p.cancel_sleep(cx));
 
         macro_rules! with_window {
             ($action:ty, |$this:ident, $window:ident, $cx:ident| $body:expr) => {{

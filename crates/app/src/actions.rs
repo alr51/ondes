@@ -22,6 +22,14 @@ gpui_kit::actions!(
         ToggleShuffle,
         CycleRepeat,
         ToggleRecording,
+        SleepIn15,
+        SleepIn30,
+        SleepIn45,
+        SleepIn60,
+        SleepIn90,
+        SleepIn120,
+        SleepEndOfTrack,
+        CancelSleep,
         OpenAudioSettings,
         ToggleCompact,
         ToggleVisualizer,
@@ -153,6 +161,54 @@ pub fn palette() -> Vec<(&'static str, Vec<PaletteEntry>)> {
                     CircleDot,
                     ToggleRecording,
                     ["enregistrer", "record", "capture"]
+                ),
+                entry!(
+                    "Minuteur : pause dans 15 min",
+                    Timer,
+                    SleepIn15,
+                    ["minuteur", "veille", "sommeil", "sleep", "timer", "dormir"]
+                ),
+                entry!(
+                    "Minuteur : pause dans 30 min",
+                    Timer,
+                    SleepIn30,
+                    ["minuteur", "veille", "sommeil", "sleep", "timer", "dormir"]
+                ),
+                entry!(
+                    "Minuteur : pause dans 45 min",
+                    Timer,
+                    SleepIn45,
+                    ["minuteur", "veille", "sommeil", "sleep", "timer", "dormir"]
+                ),
+                entry!(
+                    "Minuteur : pause dans 1 h",
+                    Timer,
+                    SleepIn60,
+                    ["minuteur", "veille", "sommeil", "sleep", "timer", "dormir"]
+                ),
+                entry!(
+                    "Minuteur : pause dans 1 h 30",
+                    Timer,
+                    SleepIn90,
+                    ["minuteur", "veille", "sommeil", "sleep", "timer", "dormir"]
+                ),
+                entry!(
+                    "Minuteur : pause dans 2 h",
+                    Timer,
+                    SleepIn120,
+                    ["minuteur", "veille", "sommeil", "sleep", "timer", "dormir"]
+                ),
+                entry!(
+                    "Minuteur : arrêt à la fin du morceau",
+                    Timer,
+                    SleepEndOfTrack,
+                    ["minuteur", "veille", "sommeil", "sleep", "timer", "dormir"]
+                ),
+                entry!(
+                    "Annuler le minuteur",
+                    TimerOff,
+                    CancelSleep,
+                    ["minuteur", "veille", "sommeil", "sleep", "timer"]
                 ),
                 entry!(
                     "Vue compacte / vue complète",

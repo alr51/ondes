@@ -7,6 +7,12 @@ automatiquement). Avant de publier une version, renommer la section
 
 ## [Non publié]
 
+### Nouveautés
+- Minuteur de mise en veille : pause dans 15 min à 2 h, après un fondu de
+  sortie de 30 s (le volume est ensuite rétabli pour la reprise), ou arrêt à
+  la fin du morceau en cours. Bouton lune de la barre de lecture (temps
+  restant affiché) et palette de commandes ; « Arrêter » annule le minuteur.
+
 ## [0.7.2] — 2026-11-11
 
 ### Corrections

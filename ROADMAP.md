@@ -149,12 +149,15 @@ Principes :
 - [x] Choix des résultats : titre identique (sans accents ni parenthèses), album studio officiel, sortie la plus ancienne ; album connu d'abord ajouté à la recherche
 - [x] Page « Infos » : fiches artiste / album / titre, navigation et retour, liens MusicBrainz et Wikipédia, marques « dans la bibliothèque » et lecture ; ouverte depuis la barre de lecture, « En cours », l'historique, la bibliothèque, Ctrl+I
 
+### Phase 9 — Confort
+- [x] Minuteur de mise en veille : pause dans 15 min à 2 h après un fondu de sortie de 30 s, ou à la fin du morceau (rien n'est préchargé) ; bouton de la barre de lecture avec temps restant, palette ; annulé par « Arrêter »
+- [x] Minuteur — validé à la main
+
 ### Backlog
 - Flatpak (Flathub) (voir phase 5)
 - Installation automatique des mises à jour (`cargo-packager-updater`, paquets signés) pour AppImage, NSIS et `.dmg`
 - Build macOS à vérifier, build Intel ou universel
 - Icône dans la zone de notification (`tray-icon`) pour les bureaux qui en ont une
-- Minuteur de mise en veille
 - Édition des enregistrements de directs :
   - découpage sans réencodage (début / fin, découpe en plusieurs morceaux), aux frontières de trames MP3 / ADTS ;
   - découpe proposée d'après les changements de titre ICY notés pendant l'enregistrement ;
