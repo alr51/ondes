@@ -56,6 +56,7 @@ pilotent la lecture.
 | `Ctrl+↑` / `Ctrl+↓` | Volume |
 | `Ctrl+U` / `Ctrl+R` | Aléatoire / mode de répétition |
 | `Ctrl+D` | Radio en cours : ajouter ou retirer des favoris |
+| `Ctrl+I` | Infos sur ce qui joue (titre, album, artiste) |
 | `Ctrl+L` / `Ctrl+O` | Écouter une URL / ouvrir un fichier |
 | `Ctrl+1` … `Ctrl+7` | Pages (Explorer, Favoris, Morceaux, Albums, Artistes, Dossiers, Historique) |
 | `Ctrl+Q` | Quitter |

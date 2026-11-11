@@ -1,0 +1,24 @@
+[package]
+name = "ondes-info"
+description = "Infos d'Ondes sur les artistes, albums et titres : MusicBrainz, Cover Art Archive, Wikipédia"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ondes-library.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+
+[lints]
+workspace = true

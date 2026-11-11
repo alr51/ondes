@@ -16,6 +16,25 @@ automatiquement). Avant de publier une version, renommer la section
 - Les 10 000 dernières écoutes sont gardées ; historique en pause depuis la
   palette (« Activer / désactiver l'historique »).
 
+### Infos sur les artistes, albums et titres
+- Nouvelle page « Infos » (barre latérale, Ctrl+I pour ce qui joue), ouverte
+  aussi depuis la barre de lecture, « En cours », l'historique et les fiches
+  album / artiste de la bibliothèque. On passe d'une fiche à l'autre (titre →
+  album → artiste) avec retour arrière.
+- Artiste : photo, origine, années d'activité, genres, biographie Wikipédia en
+  français (sinon en anglais), discographie (albums, EP, autres parutions)
+  avec les albums de la bibliothèque marqués.
+- Album : pochette, date, label, durée, pistes ; « Écouter l'album » s'il est
+  dans la bibliothèque.
+- Titre : durée, première sortie, crédits (composition, paroles, chant,
+  instruments, production…), albums où il paraît.
+- Sources : MusicBrainz (une requête par seconde, comme demandé), Cover Art
+  Archive, Wikidata et Wikipédia ; réponses et images gardées deux semaines en
+  cache (`~/.cache/ondes/info`, un jour pour une recherche sans résultat), puis
+  supprimées au démarrage.
+- Recherche tolérante aux écarts des titres annoncés par les radios
+  (apostrophes, tirets, « feat. », précisions entre parenthèses).
+
 ### Titres des radios Radio France
 - FIP et ses webradios, France Inter, franceinfo, France Musique et ses
   webradios, France Culture, Mouv' et les 45 stations ICI affichent le morceau

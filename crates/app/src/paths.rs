@@ -30,6 +30,14 @@ pub fn cover_cache() -> PathBuf {
         .join("covers")
 }
 
+/// Infos sur les artistes, albums et titres (réponses, images) : `~/.cache/ondes/info`.
+pub fn info_cache() -> PathBuf {
+    project_dirs()
+        .map(|d| d.cache_dir().to_path_buf())
+        .unwrap_or_else(|| std::env::temp_dir().join("ondes-cache"))
+        .join("info")
+}
+
 /// Dossier Musique de l'utilisateur, proposé au premier lancement.
 pub fn music_dir() -> Option<PathBuf> {
     directories::UserDirs::new()

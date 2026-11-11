@@ -4736,6 +4736,7 @@ dependencies = [
  "notify-rust",
  "ondes-audio",
  "ondes-core",
+ "ondes-info",
  "ondes-library",
  "ondes-radio",
  "ondes-visual",
@@ -4767,6 +4768,20 @@ dependencies = [
 name = "ondes-core"
 version = "0.6.0"
 dependencies = [
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "ondes-info"
+version = "0.6.0"
+dependencies = [
+ "ondes-library",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
  "thiserror 2.0.21",
  "tokio",
  "tracing",

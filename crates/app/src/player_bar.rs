@@ -206,6 +206,7 @@ impl Render for PlayerBar {
         let position = self.dragging.unwrap_or(p.position);
         let recording = p.recording.is_some();
         let can_record = p.can_record() || recording;
+        let info = crate::info::Target::now_playing(p);
 
         let subtitle = match status(p) {
             Status::Hint(text) => div()
@@ -410,6 +411,16 @@ impl Render for PlayerBar {
                                 .on_click(move |_, window, cx| {
                                     toggle_favorite(&favs, &station, window, cx);
                                 }),
+                        )
+                    })
+                    .when_some(info, |row, target| {
+                        row.child(
+                            Button::new("player-info")
+                                .icon(IconName::Info)
+                                .ghost()
+                                .small()
+                                .tooltip("Infos : titre, album, artiste (Ctrl+I)")
+                                .on_click(move |_, _, cx| crate::info::show(target.clone(), cx)),
                         )
                     })
                     .when(can_record, |row| {

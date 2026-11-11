@@ -58,7 +58,9 @@ pub fn open(window: &mut Window, cx: &mut App) {
                         )
                         .child(div().text_sm().child(
                             "Interface : GPUI (Zed) et GPUI Kit (Longbridge). Décodage : \
-                                 symphonia. Annuaire : Radio Browser. Icônes : Lucide. \
+                                 symphonia. Annuaire : Radio Browser. Titres Radio France : API livemeta. \
+                                 Infos : MusicBrainz, Cover Art Archive, Wikidata, Wikipédia \
+                                 (CC BY-SA). Icônes : Lucide. \
                                  Distribué sous licence MIT ou Apache-2.0.",
                         ))
                         .child(

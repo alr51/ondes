@@ -13,6 +13,7 @@ ondes-audio.workspace = true
 ondes-radio.workspace = true
 ondes-library.workspace = true
 ondes-visual.workspace = true
+ondes-info.workspace = true
 flume.workspace = true
 notify.workspace = true
 fastrand.workspace = true

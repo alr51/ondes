@@ -7,6 +7,7 @@ use gpui_kit::component::{
     button::{Button, ButtonVariants},
     h_flex, v_flex,
 };
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::player::Player;
@@ -58,6 +59,17 @@ impl Render for NowPlaying {
             .items_center()
             .child(mode_bar(&self.stage, cx))
             .child(div().flex_1())
+            .when_some(crate::info::Target::now_playing(p), |bar, target| {
+                bar.child(
+                    Button::new("open-info")
+                        .icon(IconName::Info)
+                        .label("Infos")
+                        .ghost()
+                        .small()
+                        .tooltip("Titre, album, artiste (Ctrl+I)")
+                        .on_click(move |_, _, cx| crate::info::show(target.clone(), cx)),
+                )
+            })
             .child(
                 Button::new("open-visualizer")
                     .icon(IconName::Fullscreen)

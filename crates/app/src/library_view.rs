@@ -19,6 +19,7 @@ use gpui_kit::*;
 use ondes_library::search::{Query, fold};
 use ondes_library::{ScanProgress, Track};
 
+use crate::info::Target;
 use crate::library::LibraryModel;
 use crate::player::Player;
 use crate::player_bar::clock;
@@ -497,6 +498,8 @@ struct Group {
     subtitle: String,
     cover: Option<PathBuf>,
     tracks: Arc<Vec<usize>>,
+    /// Fiche de l'album ou de l'artiste (page « Infos »).
+    info: Option<Target>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -505,14 +508,23 @@ pub enum GroupKind {
     Artists,
 }
 
+/// Groupe ouvert : titre, sous-titre, pochette, table de ses morceaux, fiche.
+type Detail = (
+    String,
+    String,
+    Option<PathBuf>,
+    Entity<TrackTable>,
+    Option<Target>,
+);
+
 pub struct LibraryGroups {
     kind: GroupKind,
     player: Entity<Player>,
     library: Entity<LibraryModel>,
     search: Entity<InputState>,
     groups: Vec<Group>,
-    /// Groupe ouvert : titre, sous-titre, pochette et table de ses morceaux.
-    detail: Option<(String, String, Option<PathBuf>, Entity<TrackTable>)>,
+    /// Groupe ouvert : titre, sous-titre, pochette, table de ses morceaux, fiche.
+    detail: Option<Detail>,
     scroll: UniformListScrollHandle,
     _subscriptions: Vec<Subscription>,
 }
@@ -584,6 +596,11 @@ impl LibraryGroups {
                         subtitle: parts.join(" · "),
                         cover: a.cover.clone(),
                         tracks: Arc::new(a.tracks.clone()),
+                        info: a.artist.clone().map(|artist| Target::Album {
+                            id: None,
+                            artist,
+                            title: a.title.clone(),
+                        }),
                     }
                 })
                 .collect(),
@@ -603,6 +620,10 @@ impl LibraryGroups {
                     },
                     cover: a.tracks.iter().find_map(|&i| data.tracks[i].cover.clone()),
                     tracks: Arc::new(a.tracks.clone()),
+                    info: Some(Target::Artist {
+                        id: None,
+                        name: a.name.clone(),
+                    }),
                 })
                 .collect(),
         };
@@ -613,15 +634,16 @@ impl LibraryGroups {
         let Some(group) = self.groups.get(ix) else {
             return;
         };
-        let (title, subtitle, cover) = (
+        let (title, subtitle, cover, info) = (
             group.title.clone(),
             group.subtitle.clone(),
             group.cover.clone(),
+            group.info.clone(),
         );
         let scope = Scope::Some(group.tracks.clone());
         let player = self.player.clone();
         let table = cx.new(|cx| TrackTable::new(player, scope, false, window, cx));
-        self.detail = Some((title, subtitle, cover, table));
+        self.detail = Some((title, subtitle, cover, table, info));
         cx.notify();
     }
 
@@ -706,7 +728,8 @@ impl Render for LibraryGroups {
         }
         let theme = cx.theme().clone();
 
-        if let Some((title, subtitle, cover_path, table)) = &self.detail {
+        if let Some((title, subtitle, cover_path, table, info)) = &self.detail {
+            let info = info.clone();
             let table_for_play = table.clone();
             let table_for_shuffle = table.clone();
             return v_flex()
@@ -773,7 +796,19 @@ impl Render for LibraryGroups {
                                                         t.play_from(0, true, cx)
                                                     });
                                                 }),
-                                        ),
+                                        )
+                                        .when_some(info, |row, target| {
+                                            row.child(
+                                                Button::new("detail-info")
+                                                    .icon(IconName::Info)
+                                                    .label("Infos")
+                                                    .ghost()
+                                                    .small()
+                                                    .on_click(move |_, _, cx| {
+                                                        crate::info::show(target.clone(), cx)
+                                                    }),
+                                            )
+                                        }),
                                 ),
                         ),
                 )

@@ -43,6 +43,7 @@ gpui_kit::actions!(
         GoHome,
         GoNowPlaying,
         GoHistory,
+        ShowInfo,
         GoExplore,
         GoFavorites,
         GoTracks,
@@ -87,6 +88,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("ctrl-5", GoArtists, None),
         KeyBinding::new("ctrl-6", GoFolders, None),
         KeyBinding::new("ctrl-7", GoHistory, None),
+        KeyBinding::new("ctrl-i", ShowInfo, None),
         KeyBinding::new("ctrl-q", Quit, None),
     ]);
 }
@@ -200,6 +202,19 @@ pub fn palette() -> Vec<(&'static str, Vec<PaletteEntry>)> {
                     Disc3,
                     GoNowPlaying,
                     ["lecture", "pochette", "visualiseur", "spectre", "file"]
+                ),
+                entry!(
+                    "Infos sur ce qui joue",
+                    Info,
+                    ShowInfo,
+                    [
+                        "artiste",
+                        "album",
+                        "titre",
+                        "biographie",
+                        "discographie",
+                        "crédits"
+                    ]
                 ),
                 entry!(
                     "Historique",

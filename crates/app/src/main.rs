@@ -6,6 +6,7 @@ mod actions;
 mod audio_settings;
 mod compact;
 mod history;
+mod info;
 mod library;
 mod library_view;
 mod logos;
@@ -96,6 +97,7 @@ fn main() -> anyhow::Result<()> {
             radio::RadioFranceApi::init(cx);
             radio::FavoritesModel::init(cx);
             history::HistoryModel::init(cx);
+            info::init(cx);
             logos::Logos::init(cx);
             library::LibraryModel::init(cx);
 

@@ -27,6 +27,7 @@ use ondes_audio::SourceSpec;
 use crate::actions::{self, *};
 use crate::compact::CompactView;
 use crate::history::HistoryView;
+use crate::info::{InfoOpened, InfoView};
 use crate::library_view::{GroupKind, LibraryFolders, LibraryGroups, LibraryTracks};
 use crate::now_playing::NowPlaying;
 use crate::player::{Player, PlayerNotice};
@@ -47,6 +48,8 @@ pub enum Page {
     Home,
     NowPlaying,
     History,
+    /// Fiches artiste, album, titre.
+    Info,
     RadioExplore,
     RadioFavorites,
     LibraryTracks,
@@ -71,6 +74,7 @@ impl Page {
             Page::Home => "home",
             Page::NowPlaying => "now",
             Page::History => "history",
+            Page::Info => "info",
             Page::RadioExplore => "explore",
             Page::RadioFavorites => "favorites",
             Page::LibraryTracks => "tracks",
@@ -85,6 +89,7 @@ impl Page {
             "home" => Page::Home,
             "now" => Page::NowPlaying,
             "history" => Page::History,
+            "info" => Page::Info,
             "favorites" => Page::RadioFavorites,
             "tracks" => Page::LibraryTracks,
             "albums" => Page::LibraryAlbums,
@@ -99,6 +104,7 @@ impl Page {
             Page::Home => "Accueil",
             Page::NowPlaying => "En cours",
             Page::History => "Historique",
+            Page::Info => "Infos",
             Page::RadioExplore => "Explorer les radios",
             Page::RadioFavorites => "Radios favorites",
             Page::LibraryTracks => "Morceaux",
@@ -113,6 +119,7 @@ impl Page {
             Page::Home => IconName::House,
             Page::NowPlaying => IconName::Disc3,
             Page::History => IconName::Clock,
+            Page::Info => IconName::Info,
             Page::RadioExplore => IconName::Radio,
             Page::RadioFavorites => IconName::Heart,
             Page::LibraryTracks => IconName::ListMusic,
@@ -160,6 +167,7 @@ pub struct Shell {
     player_bar: Entity<PlayerBar>,
     now_playing: Entity<NowPlaying>,
     history: Entity<HistoryView>,
+    info: Entity<InfoView>,
     explore: Entity<RadioExplore>,
     favorites: Entity<RadioFavorites>,
     tracks: Entity<LibraryTracks>,
@@ -231,6 +239,7 @@ impl Shell {
         let player_bar = cx.new(|cx| PlayerBar::new(player.clone(), window, cx));
         let now_playing = cx.new(|cx| NowPlaying::new(player.clone(), cx));
         let history = cx.new(|cx| HistoryView::new(player.clone(), window, cx));
+        let info = cx.new(|cx| InfoView::new(player.clone(), cx));
         let explore = cx.new(|cx| RadioExplore::new(player.clone(), window, cx));
         let favorites = cx.new(|cx| RadioFavorites::new(player.clone(), window, cx));
         let tracks = cx.new(|cx| LibraryTracks::new(player.clone(), window, cx));
@@ -242,6 +251,11 @@ impl Shell {
         let system = cx.new(|cx| System::new(player.clone(), window, cx));
 
         let subscriptions = vec![
+            cx.subscribe(&info, |this, _, _: &InfoOpened, cx| {
+                if this.page != Page::Info {
+                    this.set_page(Page::Info, cx);
+                }
+            }),
             appearance_sub,
             enter_sub,
             // Mémorise volume, dernière source, aléatoire et répétition.
@@ -332,6 +346,7 @@ impl Shell {
             player_bar,
             now_playing,
             history,
+            info,
             explore,
             favorites,
             tracks,
@@ -367,6 +382,30 @@ impl Shell {
                     this.open_palette(window, cx);
                 }
             });
+        }
+        // Aide au développement (builds debug) : fiche ouverte au démarrage,
+        // `ONDES_INFO="artist:Nom"`, `"album:Artiste - Album"` ou `"Artiste - Titre"`.
+        if cfg!(debug_assertions)
+            && let Ok(what) = std::env::var("ONDES_INFO")
+        {
+            let target = if let Some(name) = what.strip_prefix("artist:") {
+                Some(crate::info::Target::Artist {
+                    id: None,
+                    name: name.into(),
+                })
+            } else if let Some(rest) = what.strip_prefix("album:") {
+                rest.split_once(" - ")
+                    .map(|(artist, title)| crate::info::Target::Album {
+                        id: None,
+                        artist: artist.into(),
+                        title: title.into(),
+                    })
+            } else {
+                crate::info::Target::for_announced(&what)
+            };
+            if let Some(target) = target {
+                cx.defer(move |cx| crate::info::show(target, cx));
+            }
         }
         shell.check_runtime(window, cx);
         crate::update::check_on_startup(window, cx);
@@ -571,6 +610,10 @@ impl Shell {
     }
 
     fn set_page(&mut self, page: Page, cx: &mut Context<Self>) {
+        // Page « Infos » encore vide : fiche de ce qui joue.
+        if page == Page::Info && self.info.read(cx).is_empty() {
+            self.info.update(cx, |i, cx| i.open_now_playing(cx));
+        }
         if page != Page::NowPlaying {
             self.now_playing.update(cx, |n, cx| n.suspend(cx));
         }
@@ -705,6 +748,18 @@ impl Shell {
         on_shell!(GoHome, |this, cx| this.set_page(Page::Home, cx));
         on_shell!(GoNowPlaying, |this, cx| this.set_page(Page::NowPlaying, cx));
         on_shell!(GoHistory, |this, cx| this.set_page(Page::History, cx));
+        with_window!(ShowInfo, |this, window, cx| {
+            let found = this.info.update(cx, |i, cx| i.open_now_playing(cx));
+            if !found {
+                window.push_notification(
+                    Notification::info(
+                        "Rien à chercher : il faut un morceau avec son artiste, \
+                         ou une radio qui annonce « Artiste - Titre »",
+                    ),
+                    cx,
+                );
+            }
+        });
         on_shell!(GoExplore, |this, cx| this.set_page(Page::RadioExplore, cx));
         on_shell!(GoFavorites, |this, cx| this
             .set_page(Page::RadioFavorites, cx));
@@ -826,6 +881,7 @@ impl Shell {
                 SidebarGroup::new("Écoute").child(SidebarMenu::new().children([
                     self.nav_item(Page::NowPlaying, cx),
                     self.nav_item(Page::History, cx),
+                    self.nav_item(Page::Info, cx),
                 ])),
             )
             .child(
@@ -921,6 +977,7 @@ impl Shell {
                     Page::Home => self.render_home(cx).into_any_element(),
                     Page::NowPlaying => self.now_playing.clone().cached(style()).into_any_element(),
                     Page::History => self.history.clone().cached(style()).into_any_element(),
+                    Page::Info => self.info.clone().cached(style()).into_any_element(),
                     Page::RadioExplore => self.explore.clone().cached(style()).into_any_element(),
                     Page::RadioFavorites => {
                         self.favorites.clone().cached(style()).into_any_element()

@@ -144,6 +144,11 @@ Principes :
 - [x] Historique d'écoute (SQLite, table `history` de `ondes.db`) : titres ICY et morceaux écoutés ≥ 30 s, page « Historique » (Ctrl+7) par jour, recherche, relance, copie, effacement ; 10 000 entrées, pause possible
 - [x] Titres des stations Radio France (aucun ICY) : API `livemeta/pull/{id}`, station reconnue au nom du flux (Icecast, HLS, anciens domaines), interrogée à la fin prévue de chaque morceau ; FIP Cultes, Piano Zen, La musique d'Inter et les webradios ICI thématiques n'y figurent pas
 
+### Phase 8 — Infos
+- [x] Crate `ondes-info` : MusicBrainz (cadence 1 req/s, nouvel essai sur 503), Cover Art Archive, Wikidata → Wikipédia (fr, sinon en) ; cache disque 14 jours
+- [x] Choix des résultats : titre identique (sans accents ni parenthèses), album studio officiel, sortie la plus ancienne ; album connu d'abord ajouté à la recherche
+- [x] Page « Infos » : fiches artiste / album / titre, navigation et retour, liens MusicBrainz et Wikipédia, marques « dans la bibliothèque » et lecture ; ouverte depuis la barre de lecture, « En cours », l'historique, la bibliothèque, Ctrl+I
+
 ### Backlog
 - Flatpak (Flathub) (voir phase 5)
 - Installation automatique des mises à jour (`cargo-packager-updater`, paquets signés) pour AppImage, NSIS et `.dmg`
@@ -155,11 +160,6 @@ Principes :
   - découpe proposée d'après les changements de titre ICY notés pendant l'enregistrement ;
   - tags (titre, artiste, album, année, pochette) avec `lofty` ;
   - AAC brut (ADTS) : pas de tags possibles, remuxer en `.m4a` pour les porter.
-- Fiche artiste : informations et discographie
-  - accessible depuis la bibliothèque (vue Artistes), le morceau en cours et le titre ICY d'une radio ;
-  - discographie (albums, singles, années) via MusicBrainz (gratuit, sans clé, 1 requête/s, User-Agent obligatoire), pochettes via Cover Art Archive ;
-  - biographie et photo via Wikidata / Wikipédia (en français si disponible) ;
-  - albums déjà présents dans la bibliothèque mis en évidence ; cache disque des réponses.
 - Visualiseurs : plus d'effets, pochette intégrée aux effets, effets écrits par l'utilisateur (fichiers `.wgsl` rechargés à chaud)
 
 ## Risques

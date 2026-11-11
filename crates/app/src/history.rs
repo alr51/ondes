@@ -326,6 +326,17 @@ impl HistoryView {
         let text = entry.display_title();
         let model = self.model.clone();
         let id = entry.id;
+        let info = entry
+            .artist
+            .clone()
+            .map(|artist| crate::info::Target::Track {
+                id: None,
+                artist,
+                title: entry.title.clone(),
+                album: (entry.kind == HistoryKind::File)
+                    .then(|| entry.source.clone())
+                    .flatten(),
+            });
         h_flex()
             .id(ElementId::NamedInteger("history".into(), ix as u64))
             .group("history-row")
@@ -367,6 +378,19 @@ impl HistoryView {
                     .gap_1()
                     .invisible()
                     .group_hover("history-row", |s| s.visible())
+                    .when_some(info, |row, target| {
+                        row.child(
+                            Button::new("info")
+                                .icon(IconName::Info)
+                                .ghost()
+                                .small()
+                                .tooltip("Infos : titre, album, artiste")
+                                .on_click(move |_, _, cx| {
+                                    cx.stop_propagation();
+                                    crate::info::show(target.clone(), cx);
+                                }),
+                        )
+                    })
                     .child(
                         Button::new("copy")
                             .icon(IconName::Copy)
